@@ -148,3 +148,75 @@ import Testing
         #expect(ctx.store.settings.windowLayouts.isEmpty)
     }
 }
+
+@Suite struct ProfileActionTests {
+    @Test func importingAppliesEachPartAndUndoPutsItBack() async throws {
+        let system = FakeSystem()
+        system.load(Helper.yabai.label)
+        system.load(Helper.borders.label)
+        let ctx = try sandboxContext(system)
+        let actions = Actions(ctx)
+        // The other Mac: wider gaps, and a glow file edited by hand.
+        var theirs = OrbitSettings()
+        theirs.tiling.gap = 20
+        theirs.modes = []
+        let glow = "#!/bin/bash\n# my own glow\nborders width=9.0 token=\(OrbitProfile.tokenPlaceholder)\n"
+        let profile = OrbitProfile(settings: theirs, files: [ManagedFile.bordersrc.rawValue: glow], edited: [ManagedFile.bordersrc.rawValue])
+
+        let outcome = try await actions.importProfile(profile)
+        #expect(outcome.ok, "\(outcome.message)")
+        #expect(ctx.store.settings.tiling.gap == 20)
+        #expect(ctx.store.settings.modes.isEmpty)
+        #expect(try String(contentsOf: ctx.paths.yabairc, encoding: .utf8).contains(/window_gap +20\n/))
+        #expect(try String(contentsOf: ctx.paths.bordersrc, encoding: .utf8) == glow.replacingOccurrences(of: OrbitProfile.tokenPlaceholder, with: ctx.store.linkToken))
+        #expect(system.ran("yabai", "-m", "config", "window_gap", "20"))
+
+        _ = await actions.undo(outcome.undo)
+        #expect(ctx.store.settings.tiling.gap == 10)
+        #expect(ctx.store.settings.modes == ModeDefinition.defaults)
+        #expect(!FileManager.default.fileExists(atPath: ctx.paths.bordersrc.path(percentEncoded: false)))
+    }
+
+    @Test func handEditedFilesHereAreListedFirst() async throws {
+        let ctx = try sandboxContext()
+        let actions = Actions(ctx)
+        try FileManager.default.createDirectory(at: ctx.paths.bordersrc.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("# written by Orbit\n".utf8).write(to: ctx.paths.bordersrc)
+        ctx.store.noteWritten(.bordersrc, data: Data("# written by Orbit\n".utf8))
+        try Data("# changed by me\n".utf8).write(to: ctx.paths.bordersrc)
+        var theirs = OrbitSettings()
+        theirs.glow.width = 10
+        let profile = OrbitProfile(settings: theirs, files: [:], edited: [])
+        #expect(actions.filesImportReplaces(profile) == [.bordersrc])
+        await #expect(throws: EditedByHand.self) { try await actions.importProfile(profile) }
+        let approved = try await actions.importProfile(profile, policy: WritePolicy.askIfEdited.approving(.bordersrc))
+        #expect(approved.ok)
+    }
+
+    @Test func savingIntoAFolderAndCommittingThere() async throws {
+        let system = FakeSystem()
+        let ctx = try sandboxContext(system)
+        let actions = Actions(ctx)
+        try FileManager.default.createDirectory(at: ctx.paths.yabairc.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("yabai -m config layout bsp\n".utf8).write(to: ctx.paths.yabairc)
+        let folder = ctx.paths.developer.appending(path: "dotfiles/orbit")
+        #expect(await actions.exportProfile(intoFolder: folder).ok)
+        let profile = try OrbitProfile.decode(Data(contentsOf: folder.appending(path: "Orbit Profile.json")))
+        #expect(profile.files["yabairc"] == "yabai -m config layout bsp\n")
+        #expect(FileManager.default.fileExists(atPath: folder.appending(path: "files/yabairc").path(percentEncoded: false)))
+        #expect(await actions.commitProfile(in: folder).ok)
+        let path = folder.path(percentEncoded: false)
+        #expect(system.ran("git", "-C", path, "add", "--", "Orbit Profile.json", "files"))
+        #expect(system.commands.contains { $0.arguments.starts(with: ["-C", path, "commit", "-m"]) })
+        #expect(!system.commands.contains { $0.arguments.contains("push") })
+    }
+
+    @Test func aProfileIsReadFromItsJSON() async throws {
+        let ctx = try sandboxContext()
+        let file = ctx.paths.home.appending(path: "Orbit Profile.json")
+        var settings = OrbitSettings()
+        settings.theme = .rosePine
+        try OrbitProfile(settings: settings, files: [:], edited: []).encoded().write(to: file)
+        #expect(try await Actions(ctx).readProfile(at: file).settings.theme == .rosePine)
+    }
+}

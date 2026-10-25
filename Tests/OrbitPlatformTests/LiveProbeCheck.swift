@@ -128,6 +128,20 @@ struct LiveProbeCheck {
         print("PROBE windows: putting it back needs \(plan.steps.count) steps, notes \(plan.notes)")
     }
 
+    /// This Mac's setup as a profile, and what importing it straight back would change (it only reads).
+    @Test func profileOfThisMac() throws {
+        let ctx = SystemContext.make(mode: .live)
+        let actions = Actions(ctx)
+        let profile = actions.currentProfile()
+        let data = try profile.encoded()
+        let text = String(decoding: data, as: UTF8.self)
+        print("PROBE profile: \(data.count / 1024) KB, \(profile.files.count) files, edited by hand: \(profile.edited)")
+        print("PROBE profile: link token left out: \(!text.contains(ctx.store.linkToken))")
+        let back = try OrbitProfile.decode(data)
+        print("PROBE profile: reads back the same: \(back == profile); importing it here changes \(back.changedSettings(from: ctx.store.settings))")
+        print("PROBE profile: would replace hand-edited files here: \(actions.filesImportReplaces(back))")
+    }
+
     /// What theme sync would change on this Mac (it only reads).
     @Test func themeSyncOnThisMac() throws {
         let ctx = SystemContext.make(mode: .live)

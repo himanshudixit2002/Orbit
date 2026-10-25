@@ -525,6 +525,9 @@ struct HealthPage: View {
                 }
             }
 
+            SectionTitle(text: "Your setup")
+            ProfilePanel()
+
             SectionTitle(text: "Start over")
             GlassPanel {
                 VStack(alignment: .leading, spacing: 12) {

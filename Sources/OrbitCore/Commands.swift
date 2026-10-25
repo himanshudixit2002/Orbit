@@ -153,6 +153,32 @@ public enum Commands {
                 summary: "\(verb.rawValue.capitalized) the window shortcuts", timeout: 15, okStatuses: [0, 1])
     }
 
+    /// Zips a folder (the profile Orbit put together) to where the user chose.
+    public static func zip(_ folder: URL, to destination: URL) -> Command {
+        Command("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", folder.path(percentEncoded: false), destination.path(percentEncoded: false)],
+                effect: .userFiles, summary: "Save the profile as \(destination.lastPathComponent)", timeout: 30)
+    }
+
+    /// Unpacks a profile .zip into a temporary folder of Orbit's own, to read it: nothing of the user's changes.
+    public static func unzip(_ archive: URL, into folder: URL) -> Command {
+        Command("/usr/bin/ditto", ["-x", "-k", archive.path(percentEncoded: false), folder.path(percentEncoded: false)],
+                effect: .readOnly, summary: "Open the profile \(archive.lastPathComponent)", timeout: 30)
+    }
+
+    public static func gitInsideWorkTree(_ folder: String) -> Command {
+        Command(Tool.git, ["-C", folder, "rev-parse", "--is-inside-work-tree"], effect: .readOnly, summary: "Check whether the folder is in git", timeout: 5)
+    }
+
+    public static func gitAdd(_ folder: String, _ paths: [String]) -> Command {
+        Command(Tool.git, ["-C", folder, "add", "--"] + paths, effect: .userFiles, summary: "Stage the profile files in git", timeout: 15)
+    }
+
+    /// A commit on this Mac only (Orbit never pushes).
+    public static func gitCommit(_ folder: String, message: String) -> Command {
+        Command(Tool.git, ["-C", folder, "commit", "-m", message, "--", "Orbit Profile.json", "files"], effect: .userFiles,
+                summary: "Commit the profile in git (not pushed)", timeout: 15, okStatuses: [0])
+    }
+
     public static func yabaiQueryWindows() -> Command {
         Command(Tool.yabai, ["-m", "query", "--windows"], effect: .readOnly, summary: "Ask window tiling where the windows are", timeout: 3)
     }

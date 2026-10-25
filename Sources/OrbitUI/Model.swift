@@ -56,6 +56,10 @@ public final class AppModel {
     var toast: Toast?
     var conflict: Conflict?
     var undoQuestion: UndoQuestion?
+    /// A profile picked to import, waiting for the user to look it over.
+    var pendingImport: ProfileImport?
+    /// A folder the setup was just saved into that's in git: Orbit offers to commit it there.
+    var profileCommitFolder: URL?
     public var showSetup = false
     var practiceLog: [PracticeEntry] = []
     var journal: [JournalEntry] = []

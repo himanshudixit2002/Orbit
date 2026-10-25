@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import Observation
 import OrbitCore
 import OrbitPlatform
@@ -160,6 +161,70 @@ extension AppModel {
             applyTheme(settings.theme)
         } else {
             perform("tmux", "Stopped theming tmux") { [actions] _ in try await actions.removeTmuxTheme() }
+        }
+    }
+
+    // MARK: Profile
+
+    /// Asks where to save, then saves the setup as a .zip.
+    func exportProfile() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Orbit Profile \(Date().formatted(.iso8601.year().month().day())).zip"
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Documents")
+        panel.allowedContentTypes = [.zip]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        perform("exportProfile", "Saved a copy of the setup", lane: false) { [actions] _ in await actions.exportProfile(to: url) }
+    }
+
+    /// Asks for a folder (a dotfiles repository, say), saves the setup into it as plain files, and
+    /// offers to commit them when the folder is in git.
+    func exportProfileToFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Developer")
+        panel.prompt = "Save Here"
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        Task {
+            let result = await performNow("exportProfile", "Saved the setup into a folder") { [actions] _ in await actions.exportProfile(intoFolder: folder) }
+            if result.ok, await actions.isInGit(folder) { profileCommitFolder = folder }
+        }
+    }
+
+    func commitProfile(in folder: URL) {
+        perform("commitProfile", "Committed the setup in git", lane: false) { [actions] _ in await actions.commitProfile(in: folder) }
+    }
+
+    /// Asks for a profile, reads it, and shows what importing it would change.
+    func pickProfileToImport() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.zip, .json]
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Documents")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            do {
+                let profile = try await actions.readProfile(at: url)
+                pendingImport = ProfileImport(profile: profile, settings: profile.changedSettings(from: settings),
+                                              replaced: actions.filesImportReplaces(profile))
+            } catch {
+                show(Toast(ok: false, message: error.localizedDescription, journalID: nil))
+            }
+        }
+    }
+
+    /// Imports what the user looked over; the hand-edited files it listed may be replaced.
+    func importProfile(_ pending: ProfileImport) {
+        pendingImport = nil
+        Task {
+            let result = await performNow("importProfile", "Imported a setup profile") { [actions] policy in
+                try await actions.importProfile(pending.profile, policy: pending.replaced.reduce(policy) { $0.approving($1) })
+            }
+            guard result.ok else { return }
+            // What lives in Orbit itself: the palette's shortcut, mode schedules, the theme's wallpaper.
+            applyHotKey()
+            armModeAlarm()
+            if settings.wallpaperFollowsTheme { setThemeWallpaper(palette) }
         }
     }
 
