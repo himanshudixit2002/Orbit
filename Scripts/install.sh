@@ -17,9 +17,9 @@ for _ in $(seq 1 24); do
   sleep 0.5
 done
 # The quit request can be blocked by macOS's Automation permission, so stop any copy still running
-# (but never the "Orbit Dev" practice build).
+# (but never the "Orbit Dev" practice build, which runs from the build folder).
 for pid in $(pgrep -x Orbit); do
-  /bin/ps -p "$pid" -o command= | grep -q "Orbit Dev.app" || kill "$pid"
+  /bin/ps -p "$pid" -o command= | grep -qE "Orbit Dev.app|/Debug/Orbit.app" || kill "$pid"
 done
 sleep 1
 if [ -d "$DEST" ]; then
