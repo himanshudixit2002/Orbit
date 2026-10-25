@@ -40,9 +40,12 @@ grep -E "warning:" "$LOG" | grep -v -E "Metadata extraction skipped" | sort -u |
 BUILT="$DERIVED/Build/Products/$CONFIG/Orbit.app"
 rm -rf "$OUT"
 cp -R "$BUILT" "$OUT"
-# Xcode registers what it builds; keep macOS from treating the build copies as more Orbits.
+# Xcode registers what it builds; keep macOS from treating the build copies (and their widgets) as
+# more Orbits.
 for copy in "$DERIVED"/Build/Products/*/Orbit.app "$PWD/$OUT"; do
-  [ -e "$copy" ] && "$LSREGISTER" -u "$copy" 2>/dev/null || true
+  [ -e "$copy" ] || continue
+  "$LSREGISTER" -u "$copy" 2>/dev/null || true
+  pluginkit -r "$copy/Contents/PlugIns/OrbitWidgets.appex" 2>/dev/null || true
 done
 
 codesign --verify --deep --strict "$OUT" && echo "   signature ok ($(codesign -dvv "$OUT" 2>&1 | sed -n 's/^Authority=\(Apple Development.*\)/\1/p' | head -1))"

@@ -27,6 +27,8 @@ if [ -d "$DEST" ]; then
 fi
 mv .build/Orbit.app "$DEST"
 "$LSREGISTER" -f "$DEST"
+# The widgets and Control Center switches are found in the installed app.
+pluginkit -a "$DEST/Contents/PlugIns/OrbitWidgets.appex" 2>/dev/null || true
 
 case "${1:-}" in
   --no-open) ;;

@@ -182,3 +182,30 @@ struct OrbitFocusFilter: SetFocusFilterIntent {
         return .result()
     }
 }
+
+/// A mode's Control Center switch.
+struct ModeSwitchIntent: SetValueIntent {
+    static let title: LocalizedStringResource = "Orbit Mode Switch"
+    static let isDiscoverable = false
+    static let supportedModes: IntentModes = .background
+    static let allowedExecutionTargets: IntentExecutionTargets = .main
+
+    @Parameter(title: "Mode") var mode: ModeEntity
+    @Parameter(title: "On") var value: Bool
+
+    init() {}
+    init(_ mode: ModeEntity) { self.mode = mode }
+
+    func perform() async throws -> some IntentResult {
+        _ = try await OrbitBridge.run(value ? .startMode(mode.id) : .stopMode, source: .control).checked()
+        return .result()
+    }
+}
+
+/// Which mode a mode switch in Control Center is for.
+struct ModeControlConfiguration: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Orbit Mode"
+    static let isDiscoverable = false
+
+    @Parameter(title: "Mode") var mode: ModeEntity?
+}
