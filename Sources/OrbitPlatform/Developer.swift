@@ -68,7 +68,15 @@ public struct DeveloperProbe: Sendable {
         let result = await ctx.run(Commands.brewServicesInfo())
         return BrewServiceInfo.parse(Data(result.stdout.utf8))
             .filter { !Doctor.orbitServices.contains($0.name) && $0.name != "yabai" && $0.name != "skhd" }
-            .map { ServiceInfo(formula: $0.name, running: $0.running, atLogin: $0.registered ?? $0.loaded) }
+            .map { ServiceInfo(formula: $0.name, running: $0.running, atLogin: $0.registered == true || startsAtLogin($0.name)) }
+    }
+
+    /// A login file for the service, under any name Homebrew has used for it ("sh.brew." now, "homebrew.mxcl."
+    /// before): Homebrew only counts its current name as registered, but an older file starts it all the same.
+    func startsAtLogin(_ formula: String) -> Bool {
+        ["sh.brew.", "homebrew.mxcl.", "homebrew."].contains { prefix in
+            ctx.files.exists(ctx.paths.launchAgents.appending(path: "\(prefix)\(formula).plist"))
+        }
     }
 
     /// What's listening for connections (Orbit itself aside), and whose each one is.

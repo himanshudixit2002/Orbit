@@ -430,7 +430,7 @@ public enum SketchyBarConfig {
         "services.sh": #"""
         #!/bin/zsh
         # How many Homebrew services (databases and the like) are running; hidden when none are.
-        count=$(/bin/launchctl list | awk '$1 != "-" && $3 ~ /^homebrew\.mxcl\./ && $3 !~ /\.(borders|sketchybar)$/ {n++} END {print n+0}')
+        count=$(/bin/launchctl list | awk '$1 != "-" && $3 ~ /^(homebrew(\.mxcl)?|sh\.brew)\./ && $3 !~ /\.(borders|sketchybar)$/ {n++} END {print n+0}')
         if (( count > 0 )); then
           sketchybar --set "$NAME" drawing=on label="$count"
         else

@@ -29,6 +29,13 @@ import Testing
         #expect(layout.summary == "1 desktop: Antigravity IDE, Warp")
     }
 
+    @Test func fullScreenAppsAreLeftOut() {
+        let spaces = YabaiSpace.parse(Data(#"[{"index":1,"type":"bsp"},{"index":2,"type":"float","is-native-fullscreen":true}]"#.utf8))
+        #expect(spaces.map(\.isFullscreen) == [false, true])
+        let windows = [YabaiWindow(id: 1, app: "Warp", space: 1, frame: left), YabaiWindow(id: 2, app: "Safari", space: 2, frame: right)]
+        #expect(WindowLayout.capture(name: "Now", windows: windows, spaces: spaces).desktops.map(\.index) == [1])
+    }
+
     @Test func theSameArrangementNeedsNothing() {
         let windows = [YabaiWindow(id: 1, app: "Antigravity IDE", space: 1, frame: left), YabaiWindow(id: 2, app: "Warp", space: 1, frame: right)]
         let spaces = [YabaiSpace(index: 1, layout: .tiles)]

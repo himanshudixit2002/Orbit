@@ -28,7 +28,7 @@ import Testing
     }
 
     @Test func appsHaveNoSwitchToFlip() async throws {
-        let reply = await try model().run(.setFeature(.raycast, on: true), source: .shortcut)
+        let reply = try await model().run(.setFeature(.raycast, on: true), source: .shortcut)
         #expect(!reply.ok && reply.message.contains("no on/off switch"))
     }
 
@@ -55,7 +55,7 @@ import Testing
     }
 
     @Test func checkingStatusSaysWhatNeedsAttention() async throws {
-        let reply = await try model("fresh").run(.checkStatus, source: .shortcut)
+        let reply = try await model("fresh").run(.checkStatus, source: .shortcut)
         #expect(reply.message.contains(" of 10 are on."))
     }
 

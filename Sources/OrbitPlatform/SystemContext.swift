@@ -12,6 +12,8 @@ public enum RunMode: String, Sendable {
 /// Practice mode keeps a separate copy so experiments never touch the real one.
 public final class StateStore: Sendable {
     public let root: URL
+    /// The real store's folder, for practice mode's copy: its record of written files counts too.
+    let liveRoot: URL?
     private struct State {
         var settings = OrbitSettings()
         var registry = FileRegistry()
@@ -25,8 +27,9 @@ public final class StateStore: Sendable {
     /// baseline.json was there but couldn't be read: taking a new one now would record Orbit's own changes.
     public let baselineUnreadable: Bool
 
-    public init(root: URL) {
+    public init(root: URL, liveRoot: URL? = nil) {
         self.root = root
+        self.liveRoot = liveRoot
         var loaded = State()
         let settingsFile = root.appending(path: "settings.json")
         if let data = try? Data(contentsOf: settingsFile) {
@@ -124,7 +127,13 @@ public final class StateStore: Sendable {
         }
     }
 
-    public var registry: FileRegistry { state.withLock { $0.registry } }
+    public var registry: FileRegistry {
+        var registry = state.withLock { $0.registry }
+        if let liveRoot, let live = Self.load(FileRegistry.self, liveRoot.appending(path: "managed-files.json")) {
+            registry.alsoWritten = live.lastWritten
+        }
+        return registry
+    }
 
     public func noteWritten(_ file: ManagedFile, data: Data) {
         state.withLock { s in
@@ -303,7 +312,7 @@ public struct SystemContext: Sendable {
             return SystemContext(mode: mode, paths: paths, uid: getuid(), executor: LoggingExecutor(live, log: activity),
                                  files: LiveFileStore(), prefs: LivePreferences(), practiceLog: log, store: store, activity: activity)
         case .practice:
-            let store = StateStore(root: paths.practiceRoot.appending(path: "State"))
+            let store = StateStore(root: paths.practiceRoot.appending(path: "State"), liveRoot: paths.support)
             let activity = ActivityLog(root: store.root)
             return SystemContext(mode: mode, paths: paths, uid: getuid(),
                                  executor: LoggingExecutor(PracticeExecutor(live: live, log: log), log: activity),

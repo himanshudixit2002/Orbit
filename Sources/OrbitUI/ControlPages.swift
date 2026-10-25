@@ -60,7 +60,10 @@ struct WindowLayoutsPanel: View {
                     Text("Give a desktop its own window style; the rest keep the one above.").foregroundStyle(.secondary)
                     if desktops.isEmpty { Text("Looking for desktops…").foregroundStyle(.tertiary) }
                     ForEach(desktops, id: \.self) { space in
-                        SettingRow(title: "Desktop \(space)", detail: spaces.first { $0.index == space }?.isVisible == true ? "On screen now" : "") {
+                        let found = spaces.first { $0.index == space }
+                        let fullscreen = found?.isFullscreen == true
+                        SettingRow(title: "Desktop \(space)",
+                                   detail: fullscreen ? "An app in full screen" : found?.isVisible == true ? "On screen now" : "") {
                             Picker("Desktop \(space)", selection: Binding(
                                 get: { model.settings.tiling.spaceLayouts.first { $0.space == space }?.layout },
                                 set: { model.setSpaceLayout(space, $0) })) {
@@ -68,7 +71,7 @@ struct WindowLayoutsPanel: View {
                                 ForEach(TilingLayout.allCases) { Text($0.title).tag(Optional($0)) }
                             }
                             .labelsHidden().frame(width: 200)
-                            .disabled(model.isBusy("spaceLayout-\(space)"))
+                            .disabled(fullscreen || model.isBusy("spaceLayout-\(space)"))
                         }
                     }
                 }

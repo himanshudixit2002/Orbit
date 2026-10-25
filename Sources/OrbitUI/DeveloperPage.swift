@@ -177,7 +177,7 @@ struct DeveloperPage: View {
     func portRow(_ info: PortInfo) -> some View {
         let port = info.port
         return HStack(spacing: 10) {
-            Text(":\(port.port)").font(.body.monospacedDigit().weight(.semibold)).frame(width: 70, alignment: .leading)
+            Text(verbatim: ":\(port.port)").font(.body.monospacedDigit().weight(.semibold)).frame(width: 70, alignment: .leading)
             Text(port.command).lineLimit(1)
             if let detail = project(of: info) ?? port.knownUse ?? info.owner.label {
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)

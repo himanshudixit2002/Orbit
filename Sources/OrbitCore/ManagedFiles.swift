@@ -78,8 +78,13 @@ public enum Hashing {
 /// What Orbit last wrote to each file, so it can tell an edit made outside the app.
 public struct FileRegistry: Codable, Sendable, Equatable {
     public var lastWritten: [ManagedFile: String] = [:]
+    /// What the real Orbit last wrote, which practice mode accepts too (it reads the real files until it
+    /// has copies of its own). Not saved.
+    public var alsoWritten: [ManagedFile: String] = [:]
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey { case lastWritten }
 
     public enum Verdict: Sendable, Equatable {
         case safe          // missing, written by Orbit, or a known earlier version
@@ -90,7 +95,7 @@ public struct FileRegistry: Codable, Sendable, Equatable {
         guard let current else { return .safe }
         let hash = Hashing.sha256(current)
         if file.ownerRewrites { return .safe }
-        if lastWritten[file] == hash || file.knownHashes.contains(hash) || adoptable.contains(hash) { return .safe }
+        if lastWritten[file] == hash || alsoWritten[file] == hash || file.knownHashes.contains(hash) || adoptable.contains(hash) { return .safe }
         return .editedByHand
     }
 }

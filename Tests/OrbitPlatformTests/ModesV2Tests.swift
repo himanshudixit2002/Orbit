@@ -97,3 +97,34 @@ import Testing
         #expect(ctx.practiceLog.all.contains { $0.summary.contains("sleep") })
     }
 }
+
+@Suite struct ServiceLoginTests {
+    @Test func anOlderLoginFileCountsAsStartingAtLogin() async throws {
+        let system = FakeSystem()
+        let json = #"[{"name":"mongodb-community","running":true,"loaded":true,"registered":false},{"name":"colima","running":false,"loaded":false,"registered":false}]"#
+        system.answer(CommandResult(status: 0, stdout: json, ok: true)) { $0.arguments.starts(with: ["services", "info"]) }
+        let ctx = try sandboxContext(system)
+        try FileManager.default.createDirectory(at: ctx.paths.launchAgents, withIntermediateDirectories: true)
+        try Data("<plist/>".utf8).write(to: ctx.paths.launchAgents.appending(path: "homebrew.mxcl.mongodb-community.plist"))
+        let services = await DeveloperProbe(ctx).services()
+        #expect(services.first { $0.formula == "mongodb-community" }?.atLogin == true)
+        #expect(services.first { $0.formula == "colima" }?.atLogin == false)
+    }
+}
+
+@Suite struct PracticeRegistryTests {
+    @Test func practiceAcceptsWhatTheRealOrbitWrote() throws {
+        let paths = try tempHome()
+        let live = StateStore(root: paths.support)
+        let written = Data("# Orbit's bar\n".utf8)
+        live.noteWritten(.sketchybarrc, data: written)
+        let practice = StateStore(root: paths.practiceRoot.appending(path: "State"), liveRoot: paths.support)
+        #expect(practice.registry.verdict(for: .sketchybarrc, current: written) == .safe)
+        #expect(practice.registry.verdict(for: .sketchybarrc, current: Data("# mine\n".utf8)) == .editedByHand)
+        // What practice records is its own; the real record is never saved into it.
+        practice.noteWritten(.bordersrc, data: Data("x".utf8))
+        let saved = try JSONDecoder().decode(FileRegistry.self, from: Data(contentsOf: paths.practiceRoot.appending(path: "State/managed-files.json")))
+        #expect(saved.lastWritten.keys.sorted { $0.rawValue < $1.rawValue } == [.bordersrc])
+        #expect(saved.alsoWritten.isEmpty)
+    }
+}

@@ -71,16 +71,19 @@ public struct YabaiSpace: Decodable, Sendable, Equatable {
     public var index: Int
     public var layout: TilingLayout
     public var isVisible: Bool
+    /// An app in full screen: it has the desktop to itself, so styles and arrangements don't apply.
+    public var isFullscreen: Bool
 
-    public init(index: Int, layout: TilingLayout, isVisible: Bool = false) {
+    public init(index: Int, layout: TilingLayout, isVisible: Bool = false, isFullscreen: Bool = false) {
         self.index = index
         self.layout = layout
         self.isVisible = isVisible
+        self.isFullscreen = isFullscreen
     }
 
     private enum CodingKeys: String, CodingKey {
         case index, type
-        case isVisible = "is-visible"
+        case isVisible = "is-visible", isFullscreen = "is-native-fullscreen"
     }
 
     public init(from decoder: Decoder) throws {
@@ -88,6 +91,7 @@ public struct YabaiSpace: Decodable, Sendable, Equatable {
         index = try c.decode(Int.self, forKey: .index)
         layout = c.value(.type, or: .tiles)
         isVisible = c.value(.isVisible, or: false)
+        isFullscreen = c.value(.isFullscreen, or: false)
     }
 
     public static func parse(_ data: Data) -> [YabaiSpace] {
@@ -158,7 +162,8 @@ public struct WindowLayout: Codable, Sendable, Equatable, Identifiable {
 
     /// What's on screen now, as a layout.
     public static func capture(name: String, windows: [YabaiWindow], spaces: [YabaiSpace], date: Date = Date()) -> WindowLayout {
-        let desktops = spaces.sorted { $0.index < $1.index }.compactMap { space -> Desktop? in
+        // Full-screen apps come and go with their own desktops: they're left out.
+        let desktops = spaces.filter { !$0.isFullscreen }.sorted { $0.index < $1.index }.compactMap { space -> Desktop? in
             let here = readingOrder(windows.filter { $0.space == space.index })
             guard !here.isEmpty else { return nil }
             return Desktop(index: space.index, layout: space.layout,
