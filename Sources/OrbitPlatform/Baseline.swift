@@ -16,11 +16,40 @@ extension Actions {
                 baseline.files[url.path(percentEncoded: false)] = copy.path(percentEncoded: false)
             }
         }
+        baseline.lookedAt = files.map { $0.path(percentEncoded: false) }.sorted()
         for helper in Helper.allCases {
             baseline.helpersOn[helper] = await isRunning(helper)
         }
         let delta = await ctx.run(Commands.gitConfigGet("delta.syntax-theme"))
         baseline.gitDeltaTheme = delta.status == 0 ? delta.stdout.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        ctx.store.setBaseline(baseline)
+    }
+
+    /// The files the baseline knows the state of.
+    func lookedAt(_ baseline: Baseline) -> Set<String> {
+        let first = ManagedFile.first.map { $0.url(paths) } + [paths.tmuxConf, paths.skhdrc, paths.btopConf]
+        return Set(baseline.lookedAt ?? first.map { $0.path(percentEncoded: false) })
+    }
+
+    /// Files Orbit began to manage after the baseline was made (the Downloads sorter, Warp's theme): as
+    /// they are now is how they were before Orbit, unless Orbit has written them since. Runs at launch,
+    /// before anything can write them, so "Back to before Orbit" never mistakes them for Orbit's own.
+    public func topUpBaseline() {
+        guard var baseline = ctx.store.baseline else { return }
+        var looked = lookedAt(baseline)
+        let before = looked
+        let folder = ctx.store.root.appending(path: "Backups/Before Orbit")
+        for file in ManagedFile.allCases {
+            let url = file.url(paths)
+            let path = url.path(percentEncoded: false)
+            guard !looked.contains(path) else { continue }
+            looked.insert(path)
+            // Written by Orbit already: its history says what was there first.
+            guard Self.before(path, baseline: baseline, journal: ctx.store.journal) == .unknown else { continue }
+            if let copy = try? LiveFileStore().backup(url, into: folder) { baseline.files[path] = copy.path(percentEncoded: false) }
+        }
+        guard looked != before || baseline.lookedAt == nil else { return }
+        baseline.lookedAt = looked.sorted()
         ctx.store.setBaseline(baseline)
     }
 
@@ -46,11 +75,18 @@ extension Actions {
         let backups = backupFolder("before restoring")
         var failures: [String] = []
         var restored = Set<ManagedFile>()
+        let looked = lookedAt(baseline)
         for file in ManagedFile.allCases {
             let url = file.url(paths)
             let path = url.path(percentEncoded: false)
+            // Not in the baseline and never written by Orbit: nothing says how it was, so it stays.
+            let before: Before = looked.contains(path) ? baseline.files[path].map { .copy($0) } ?? .absent
+                                                       : Self.before(path, baseline: baseline, journal: ctx.store.journal)
             do {
-                if let copy = baseline.files[path] {
+                switch before {
+                case .unknown:
+                    continue
+                case .copy(let copy):
                     // A saved copy that's gone says nothing about the file, so it's left as it is.
                     guard let data = ctx.files.read(URL(fileURLWithPath: copy)) else {
                         failures.append("the saved copy of \(paths.tilde(url)) is missing")
@@ -58,11 +94,12 @@ extension Actions {
                     }
                     guard ctx.files.read(url) != data else { continue }
                     let backup = try ctx.files.backup(url, into: backups)
-                    try ctx.files.write(data, to: url, executable: file != .karabiner && file != .lazygit)
+                    try ctx.files.write(data, to: url, executable: file.isExecutable)
                     ctx.store.noteWritten(file, data: data)
                     undo.append(.restoreFile(path: path, backup: backup?.path(percentEncoded: false)))
                     restored.insert(file)
-                } else if ctx.files.exists(url), let backup = try ctx.files.backup(url, into: backups) {
+                case .absent:
+                    guard ctx.files.exists(url), let backup = try ctx.files.backup(url, into: backups) else { continue }
                     _ = try ctx.files.trash(url)
                     undo.append(.restoreFile(path: path, backup: backup.path(percentEncoded: false)))
                     restored.insert(file)
@@ -120,6 +157,11 @@ extension Actions {
             }
             undo.append(.gitConfig(key: "delta.syntax-theme", value: deltaNow))
         }
+        // The editor's theme and the accent colour go back to what they were before Orbit set them.
+        if settings.themeSync.editor {
+            do { undo += try editorSyncOff() } catch { failures.append("Antigravity IDE: \(error.localizedDescription)") }
+        }
+        if settings.themeSync.accent { undo += accentSyncOff() }
         // Orbit's own settings go back to their defaults, which describe the Mac before Orbit.
         undo += changeSettings { s in
             var fresh = OrbitSettings()

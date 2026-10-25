@@ -48,6 +48,10 @@ public indirect enum JSONValue: Codable, Sendable, Hashable {
     public var objectValue: [String: JSONValue]? {
         if case .object(let object) = self { object } else { nil }
     }
+
+    public var stringValue: String? {
+        if case .string(let string) = self { string } else { nil }
+    }
 }
 
 /// Decoding that keeps what's there and uses the default for anything missing or unreadable, for

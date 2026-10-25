@@ -194,6 +194,7 @@ public final class AppModel {
         Task { await keepOpeningAtLogin() }
         let wallpaper = NSScreen.main.flatMap { NSWorkspace.shared.desktopImageURL(for: $0)?.path(percentEncoded: false) }
         await actions.captureBaselineIfNeeded(wallpaper: wallpaper)
+        actions.topUpBaseline()
         await refresh()
         watchForChanges()
         // Backups the undo history no longer points to go to the Trash, so they don't pile up over the months.

@@ -30,10 +30,11 @@ public enum JSONKeyPatch {
         for (key, change) in changes.sorted(by: { $0.key < $1.key }) {
             var scanner = Scanner(bytes)
             let object = try scanner.topLevelObject()
+            let indent = object.indent(in: bytes)
             guard let index = object.members.firstIndex(where: { $0.key == key }) else {
                 absent.append(key)
                 guard case .set(let value) = change else { continue }
-                let line = "\n\(object.indent(in: bytes))\(try json(.string(key))): \(try json(value))\(object.members.isEmpty ? "\n" : ",")"
+                let line = "\n\(indent)\(try json(.string(key))): \(try render(value, indent: indent))\(object.members.isEmpty ? "\n" : ",")"
                 bytes.insert(contentsOf: Array(line.utf8), at: object.open + 1)
                 continue
             }
@@ -42,7 +43,7 @@ public enum JSONKeyPatch {
             before[key] = old
             switch change {
             case .set(let value):
-                bytes.replaceSubrange(member.valueStart..<member.valueEnd, with: Array(try json(value).utf8))
+                bytes.replaceSubrange(member.valueStart..<member.valueEnd, with: Array(try render(value, indent: indent).utf8))
             case .remove:
                 let cut = removal(of: index, in: object, bytes: bytes)
                 bytes.removeSubrange(cut)
@@ -51,10 +52,39 @@ public enum JSONKeyPatch {
         return Result(text: String(decoding: bytes, as: UTF8.self), before: before, absent: absent.sorted())
     }
 
+    /// The top-level values of `keys` in a JSON settings file (comments allowed); keys not set are left out.
+    public static func values(_ keys: Set<String>, in text: String) throws -> [String: JSONValue] {
+        let bytes = Array((text.isEmpty ? "{}" : text).utf8)
+        var scanner = Scanner(bytes)
+        var found: [String: JSONValue] = [:]
+        for member in try scanner.topLevelObject().members where keys.contains(member.key) {
+            guard let value = member.value(in: bytes) else { throw Unreadable(reason: "the value of \"\(member.key)\" isn't plain JSON") }
+            found[member.key] = value
+        }
+        return found
+    }
+
     static func json(_ value: JSONValue) throws -> String {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.withoutEscapingSlashes]
+        encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
         return String(decoding: try encoder.encode(value), as: UTF8.self)
+    }
+
+    /// A member's value as it goes in the file: objects and arrays one entry a line, indented like the
+    /// file's own members (`indent` is one level), keys in order so the same value always reads the same.
+    static func render(_ value: JSONValue, indent: String, depth: Int = 1) throws -> String {
+        let unit = indent.isEmpty ? "    " : indent
+        let outer = String(repeating: unit, count: depth), inner = outer + unit
+        switch value {
+        case .object(let members) where !members.isEmpty:
+            let lines = try members.keys.sorted().map { "\(inner)\(try json(.string($0))): \(try render(members[$0]!, indent: indent, depth: depth + 1))" }
+            return "{\n" + lines.joined(separator: ",\n") + "\n\(outer)}"
+        case .array(let items) where !items.isEmpty:
+            let lines = try items.map { "\(inner)\(try render($0, indent: indent, depth: depth + 1))" }
+            return "[\n" + lines.joined(separator: ",\n") + "\n\(outer)]"
+        default:
+            return try json(value)
+        }
     }
 
     /// Takes a member out with its line, and the comma before it when it was the last one.

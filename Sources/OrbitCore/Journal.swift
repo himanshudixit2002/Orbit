@@ -189,6 +189,9 @@ public struct Baseline: Codable, Sendable, Equatable {
     public var helpersOn: [Helper: Bool]
     public var wallpaper: String?
     public var gitDeltaTheme: String?
+    /// The files whose state this records: copied into `files` if they were there, missing if not.
+    /// Nil for baselines made before the list was kept, which looked at Orbit 1's files only.
+    public var lookedAt: [String]?
 
     public init(date: Date = Date(), preferences: [String: PrefValue] = [:], files: [String: String] = [:],
                 helpersOn: [Helper: Bool] = [:], wallpaper: String? = nil, gitDeltaTheme: String? = nil) {

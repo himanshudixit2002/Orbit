@@ -8,6 +8,8 @@ struct StylePage: View {
     @Environment(AppModel.self) private var model
     @State private var preview: NSImage?
     @State private var previewTheme: ThemeID?
+    @State private var hasWarp = false
+    @State private var hasEditor = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -63,9 +65,37 @@ struct StylePage: View {
                         Toggle("tmux", isOn: Binding(get: { model.settings.themeTmux }, set: { model.setTmuxTheme($0) }))
                             .toggleStyle(.switch).labelsHidden()
                     }
+                    if hasWarp {
+                        SettingRow(title: "Warp", detail: "An Orbit theme that follows yours. Pick it once in Warp: Settings → Appearance → Themes.") {
+                            syncToggle(.warp)
+                        }
+                    }
+                    if hasEditor {
+                        SettingRow(title: "Antigravity IDE", detail: editorDetail) { syncToggle(.editor) }
+                    }
+                    SettingRow(title: "Accent colour",
+                               detail: "Buttons, switches and selections across macOS in \(MacAccent.matching(model.settings.theme).name). Off puts yours back.") {
+                        syncToggle(.accent)
+                    }
                 }
             }
         }
+        .task {
+            hasWarp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.warp.Warp-Stable") != nil
+            hasEditor = NSWorkspace.shared.urlForApplication(withBundleIdentifier: EditorTheme.bundleID) != nil
+        }
+    }
+
+    var editorDetail: String {
+        model.settings.theme == .tokyoNight
+            ? "Uses the editor's own Tokyo Night. Off puts your theme back."
+            : "Colours its dark theme in \(model.palette.name), unless you've added that theme to the editor. Off puts yours back."
+    }
+
+    func syncToggle(_ target: ThemeSyncTarget) -> some View {
+        Toggle(target.title, isOn: Binding(get: { model.settings.themeSync[target] }, set: { model.setThemeSync(target, $0) }))
+            .toggleStyle(.switch).labelsHidden()
+            .disabled(model.isBusy("themeSync-\(target.rawValue)"))
     }
 
     func renderPreview(_ id: ThemeID) async {

@@ -580,6 +580,7 @@ public struct Actions: Sendable {
             case .restorePreference(let domain, let key, let value):
                 ctx.prefs.set(domain, key, value)
                 domains.insert(domain)
+                if key == MacAccent.key { announceAccentChange() }
                 if key == "_HIHideMenuBar" {
                     let hidden = value?.boolValue ?? false
                     await ctx.run(Commands.appleScript(

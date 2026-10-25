@@ -163,6 +163,13 @@ extension AppModel {
         }
     }
 
+    func setThemeSync(_ target: ThemeSyncTarget, _ on: Bool) {
+        settings.themeSync[target] = on
+        perform("themeSync-\(target.rawValue)", "\(on ? "Started" : "Stopped") colouring \(target.title) with the theme") { [actions] policy in
+            try await actions.setThemeSync(target, on: on, policy: policy)
+        }
+    }
+
     func setWallpaperFollowsTheme(_ on: Bool) {
         ctx.store.updateSettings { $0.wallpaperFollowsTheme = on }
         settings = ctx.store.settings

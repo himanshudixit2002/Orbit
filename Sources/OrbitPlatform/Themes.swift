@@ -18,6 +18,7 @@ extension Actions {
             .fastfetch: TerminalThemes.fastfetch(p)
         ]
         if tmux { files[.tmuxTheme] = TerminalThemes.tmux(p) }
+        if settings.themeSync.warp { files[.warpTheme] = WarpTheme.render(p) }
         try checkEdits(files, policy: policy)
         let backups = backupFolder("theme \(p.name)")
         return await steps { undo in
@@ -56,7 +57,10 @@ extension Actions {
                 await ctx.run(Command(Tool.tmux, ["source-file", paths.tmuxTheme.path(percentEncoded: false)],
                                       effect: .userFiles, summary: "Recolour open tmux windows", timeout: 5, okStatuses: [0, 1]))
             }
-            return "Your Mac now wears \(p.name)."
+            if let warp = files[.warpTheme] { undo += try write(.warpTheme, warp, backups: backups) }
+            let synced = syncTheme(p, backups: backups)
+            undo += synced.undo
+            return (["Your Mac now wears \(p.name)."] + synced.notes).joined(separator: " ")
         }
     }
 

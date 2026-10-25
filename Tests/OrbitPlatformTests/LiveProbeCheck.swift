@@ -67,6 +67,22 @@ struct LiveProbeCheck {
         }
     }
 
+    /// What theme sync would change on this Mac (it only reads).
+    @Test func themeSyncOnThisMac() throws {
+        let ctx = SystemContext.make(mode: .live)
+        let actions = Actions(ctx)
+        let installed = actions.installedEditorThemes()
+        print("PROBE themes: editor has \(installed.sorted().joined(separator: ", "))")
+        let current = try actions.editorValues()
+        print("PROBE themes: editor now \(current)")
+        for id in ThemeID.allCases {
+            let changes = EditorTheme.changes(Palette.named(id), installed: installed, current: current)
+            print("PROBE themes: \(id) → \(EditorTheme.theme(for: id, installed: installed)), \(changes.keys.sorted()), accent \(MacAccent.matching(id).name)")
+        }
+        print("PROBE themes: accent now \(String(describing: Preferences.read(WatchedPreferences.globalDomain, MacAccent.key)))")
+        print("PROBE themes: baseline looked at \(ctx.store.baseline?.lookedAt?.count ?? -1) files")
+    }
+
     /// The Developer page's facts on this Mac (it only reads).
     @Test func developerOnThisMac() async {
         let probe = DeveloperProbe(SystemContext.make(mode: .live))

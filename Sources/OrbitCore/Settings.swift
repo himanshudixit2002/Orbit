@@ -22,6 +22,8 @@ public struct OrbitSettings: Codable, Sendable, Equatable {
     /// Doctor findings the user chose to ignore, by id.
     public var doctorIgnored: [String] = []
     public var downloads = DownloadSettings()
+    /// Other apps that wear the theme too.
+    public var themeSync = ThemeSyncSettings()
 
     public init() {}
 

@@ -54,6 +54,9 @@ public struct Paths: Sendable {
     public var tmuxConf: URL { at(".tmux.conf") }
     public var cheatSheet: URL { at(".config/skhd/CHEATSHEET.md") }
     public var tmuxTheme: URL { at(".config/tmux/orbit-theme.conf") }
+    public var warpTheme: URL { at(".warp/themes/orbit.yaml") }
+    public var editorSettings: URL { at("Library/Application Support/Antigravity IDE/User/settings.json") }
+    public var editorExtensions: URL { at(".antigravity-ide/extensions") }
 
     // Folders
     public var desktop: URL { at("Desktop") }

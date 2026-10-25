@@ -4,7 +4,16 @@ import Foundation
 /// The config files Orbit writes, and how to tell whether someone has edited one since.
 public enum ManagedFile: String, Codable, CaseIterable, Sendable {
     case yabairc, bordersrc, sketchybarrc, sketchybarColors, karabiner, batTheme, batConfig, btopTheme,
-         lazygit, fastfetch, tmuxTheme, sorterScript
+         lazygit, fastfetch, tmuxTheme, sorterScript, warpTheme
+
+    /// Scripts, which must stay runnable.
+    public var isExecutable: Bool {
+        [.yabairc, .bordersrc, .sketchybarrc, .sketchybarColors, .sorterScript].contains(self)
+    }
+
+    /// Orbit 1's files: the first baseline looked at these (and no others) before it kept a list.
+    public static let first: [ManagedFile] = [.yabairc, .bordersrc, .sketchybarrc, .sketchybarColors, .karabiner, .batTheme,
+                                              .batConfig, .btopTheme, .lazygit, .fastfetch, .tmuxTheme]
 
     public func url(_ paths: Paths) -> URL {
         switch self {
@@ -20,6 +29,7 @@ public enum ManagedFile: String, Codable, CaseIterable, Sendable {
         case .fastfetch: paths.fastfetchConfig
         case .tmuxTheme: paths.tmuxTheme
         case .sorterScript: paths.sorterScript
+        case .warpTheme: paths.warpTheme
         }
     }
 
@@ -36,6 +46,7 @@ public enum ManagedFile: String, Codable, CaseIterable, Sendable {
         case .fastfetch: "System splash colours"
         case .tmuxTheme: "Terminal window colours"
         case .sorterScript: "Downloads sorter"
+        case .warpTheme: "Warp colours"
         }
     }
 
