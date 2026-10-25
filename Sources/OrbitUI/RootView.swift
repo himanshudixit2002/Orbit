@@ -165,6 +165,7 @@ struct PageView: View {
         case .files: FilesPage()
         case .modes: ModesPage()
         case .shortcuts: ShortcutsPage()
+        case .developer: DeveloperPage()
         case .monitor: MonitorPage()
         case .cleanup: CleanupPage()
         case .dockFinder: DockFinderPage()

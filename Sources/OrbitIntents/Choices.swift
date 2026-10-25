@@ -38,7 +38,7 @@ enum ThemeChoice: String, AppEnum {
 }
 
 enum PageChoice: String, AppEnum {
-    case home, style, windows, menuBar, keyboard, files, modes, shortcuts, monitor, cleanup, dockFinder, apps, health
+    case home, style, windows, menuBar, keyboard, files, modes, shortcuts, developer, monitor, cleanup, dockFinder, apps, health
 
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Orbit Page"
     static let caseDisplayRepresentations: [PageChoice: DisplayRepresentation] = [
@@ -50,6 +50,7 @@ enum PageChoice: String, AppEnum {
         .files: DisplayRepresentation(title: "Files", image: .init(systemName: "folder.fill")),
         .modes: DisplayRepresentation(title: "Modes", image: .init(systemName: "moon.stars.fill")),
         .shortcuts: DisplayRepresentation(title: "Shortcuts", image: .init(systemName: "command.square.fill")),
+        .developer: DisplayRepresentation(title: "Developer", image: .init(systemName: "hammer.fill")),
         .monitor: DisplayRepresentation(title: "Monitor", image: .init(systemName: "waveform.path.ecg")),
         .cleanup: DisplayRepresentation(title: "Cleanup", image: .init(systemName: "sparkles")),
         .dockFinder: DisplayRepresentation(title: "Dock & Finder", image: .init(systemName: "dock.rectangle")),

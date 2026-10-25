@@ -57,6 +57,8 @@ public enum UndoAction: Codable, Sendable, Equatable {
     /// Put back keys Orbit set in another app's JSON settings file: the values they had, and which
     /// ones weren't there (those are taken out again). Nothing else in the file is touched.
     case restoreJSONKeys(path: String, values: [String: JSONValue], absent: [String])
+    /// Start or stop a Homebrew service again (and with it, starting at login).
+    case brewService(formula: String, wasRunning: Bool)
 
     /// What this step puts back, so two changes that touched the same thing can be found.
     public var targets: [String] {
@@ -69,6 +71,7 @@ public enum UndoAction: Codable, Sendable, Equatable {
         case .restoreSettings(let settings): settings.changedFields.map { "setting \($0)" }
         case .loginItem(let name, _, _): ["login item \(name)"]
         case .restoreJSONKeys(let path, let values, let absent): (values.keys.sorted() + absent).map { "file \(path) key \($0)" }
+        case .brewService(let formula, _): ["service \(formula)"]
         }
     }
 }

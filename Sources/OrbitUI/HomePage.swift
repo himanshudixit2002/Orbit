@@ -60,6 +60,20 @@ struct HomePage: View {
             SectionTitle(text: "Right now")
             MiniStats()
 
+            if !model.doctor.isEmpty {
+                GlassPanel {
+                    HStack(spacing: 12) {
+                        IconTile(symbol: "stethoscope", hue: .red, size: 34)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("The Doctor found \(model.doctor.count) thing\(model.doctor.count == 1 ? "" : "s") to look at").font(.headline)
+                            Text(model.doctor.first?.title ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Button("Show") { model.page = .health }.buttonStyle(.glass)
+                    }
+                }
+            }
+
             if !model.attention.isEmpty {
                 SectionTitle(text: "Needs your OK")
                 VStack(spacing: 12) {

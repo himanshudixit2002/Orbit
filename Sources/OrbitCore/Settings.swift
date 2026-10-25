@@ -19,6 +19,8 @@ public struct OrbitSettings: Codable, Sendable, Equatable {
     public var openAtLogin: Bool?
     /// The shortcut that opens the command palette from anywhere; nil means the standard Hyper+Space.
     public var hotKey: HotKeySetting?
+    /// Doctor findings the user chose to ignore, by id.
+    public var doctorIgnored: [String] = []
 
     public init() {}
 

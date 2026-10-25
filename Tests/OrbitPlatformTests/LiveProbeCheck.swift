@@ -57,6 +57,16 @@ struct LiveProbeCheck {
     }
 
     /// Which real backups the tidy-up would clear, ignoring age. Only looks: nothing is moved.
+    /// What the Doctor finds on this Mac (it only reads).
+    @Test func doctorOnThisMac() {
+        let start = ContinuousClock.now
+        let facts = DoctorProbe(SystemContext.make(mode: .live)).facts()
+        print("PROBE doctor took \(ContinuousClock.now - start)")
+        for finding in Doctor.findings(facts) {
+            print("PROBE doctor: [\(finding.severity)] \(finding.title) — \(finding.fix?.label ?? "no fix")")
+        }
+    }
+
     @Test func backupsNothingNeeds() {
         let actions = Actions(SystemContext.make(mode: .live))
         let unneeded = actions.unneededBackups(olderThan: 0)

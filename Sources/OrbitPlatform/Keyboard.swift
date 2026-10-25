@@ -17,9 +17,15 @@ extension Actions {
         settled.hyperApps = resolved(keyboard.hyperApps)
         let current = ctx.files.read(paths.karabinerJSON)
         let patched = try KarabinerConfig.patched(current, settings: settled)
+        let backups = backupFolder("keyboard")
         return await steps { undo in
             undo += changeSettings { $0.keyboard = settled }
-            undo += try write(.karabiner, String(decoding: patched, as: UTF8.self), backups: backupFolder("keyboard"))
+            undo += try write(.karabiner, String(decoding: patched, as: UTF8.self), backups: backups)
+            // The cheat sheet (⌥ /) follows, when there is one.
+            if let sheet = ctx.files.read(paths.cheatSheet).map({ String(decoding: $0, as: UTF8.self) }) {
+                let updated = CheatSheet.update(sheet, block: cheatSheetBlock())
+                if updated != sheet { undo += try writePlain(paths.cheatSheet, updated, executable: false, backups: backups) }
+            }
             return settled.capsLockEnabled ? "Caps Lock superpowers are on." : "Caps Lock is back to normal."
         }
     }

@@ -578,6 +578,9 @@ public struct Actions: Sendable {
                 let result = await ctx.run(Commands.appleScript(Self.loginItemScript(name: name, path: path, on: wasOn), effect: .systemSetting,
                                                                 summary: wasOn ? "Open \(name) when you log in again" : "Stop opening \(name) at login"))
                 if !result.ok { failures.append("\(name) at login: \(result.failureMessage)") }
+            case .brewService(let formula, let wasRunning):
+                let result = await ctx.run(Commands.brewService(wasRunning ? .start : .stop, formula, name: Doctor.serviceName(formula)))
+                if !result.ok { failures.append("\(Doctor.serviceName(formula)): \(result.failureMessage)") }
             case .restoreJSONKeys(let path, let values, let absent):
                 do {
                     var changes = values.mapValues { JSONKeyPatch.Change.set($0) }

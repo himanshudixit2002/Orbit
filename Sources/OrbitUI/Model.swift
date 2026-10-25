@@ -17,6 +17,7 @@ extension Page {
         case .files: .teal
         case .modes: .purple
         case .shortcuts: .indigo
+        case .developer: .orange
         case .monitor: .green
         case .cleanup: .yellow
         case .dockFinder: .blue
@@ -71,6 +72,10 @@ public final class AppModel {
     /// Remembers which mode a Focus started (tests use their own).
     @ObservationIgnored var focusDefaults = UserDefaults.standard
     @ObservationIgnored let commandPalette = PaletteController()
+    /// What the Doctor found last time it looked.
+    var doctor: [DoctorFinding] = []
+    var doctorChecked: Date?
+    var doctorRunning = false
     /// What needed attention at the last check; nil before the first one.
     @ObservationIgnored var lastAttention: Set<FeatureID>?
     @ObservationIgnored let hotKey = HotKey()
@@ -157,6 +162,11 @@ public final class AppModel {
 
     func start() async {
         modes.resume()
+        // The Doctor looks once Orbit has settled (it reads app bundles and folders).
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(20))
+            self?.runDoctor()
+        }
         applyHotKey()
         publisher.startHeartbeat { [weak self] in self.map { $0.makeSnapshot() } }
         Task { _ = await readDockFinder() }

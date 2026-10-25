@@ -52,6 +52,7 @@ public struct Paths: Sendable {
     public var lazygitConfig: URL { at("Library/Application Support/lazygit/config.yml") }
     public var fastfetchConfig: URL { at(".config/fastfetch/config.jsonc") }
     public var tmuxConf: URL { at(".tmux.conf") }
+    public var cheatSheet: URL { at(".config/skhd/CHEATSHEET.md") }
     public var tmuxTheme: URL { at(".config/tmux/orbit-theme.conf") }
 
     // Folders

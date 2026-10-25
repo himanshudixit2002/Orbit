@@ -2,7 +2,7 @@ import Foundation
 
 /// The pages of Orbit's window, also named by links (orbit://page/monitor), Shortcuts and search.
 public enum Page: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
-    case home, style, windows, menuBar, keyboard, files, modes, shortcuts, monitor, cleanup, dockFinder, apps, health
+    case home, style, windows, menuBar, keyboard, files, modes, shortcuts, developer, monitor, cleanup, dockFinder, apps, health
 
     public var id: String { rawValue }
 
@@ -16,6 +16,7 @@ public enum Page: String, CaseIterable, Identifiable, Hashable, Codable, Sendabl
         case .files: "Files"
         case .modes: "Modes"
         case .shortcuts: "Shortcuts"
+        case .developer: "Developer"
         case .monitor: "Monitor"
         case .cleanup: "Cleanup"
         case .dockFinder: "Dock & Finder"
@@ -34,6 +35,7 @@ public enum Page: String, CaseIterable, Identifiable, Hashable, Codable, Sendabl
         case .files: "folder.fill"
         case .modes: "moon.stars.fill"
         case .shortcuts: "command.square.fill"
+        case .developer: "hammer.fill"
         case .monitor: "waveform.path.ecg"
         case .cleanup: "sparkles"
         case .dockFinder: "dock.rectangle"
@@ -52,6 +54,7 @@ public enum Page: String, CaseIterable, Identifiable, Hashable, Codable, Sendabl
         case .files: "Downloads that tidy themselves, and where your things live."
         case .modes: "Set up the Mac for what you're doing, in one click."
         case .shortcuts: "Reach Orbit from anywhere: a hotkey, Siri, widgets, Control Center and links."
+        case .developer: "Your projects, the services they need, and what's listening."
         case .monitor: "What your Mac is busy with, live."
         case .cleanup: "See what's taking up space and clear it safely."
         case .dockFinder: "A tidy Dock and a smarter Finder."
@@ -65,7 +68,7 @@ public enum Page: String, CaseIterable, Identifiable, Hashable, Codable, Sendabl
         case .home: ""
         case .style: "Look"
         case .windows, .menuBar, .keyboard, .files, .modes, .shortcuts: "Control"
-        case .monitor, .cleanup, .dockFinder, .apps: "System"
+        case .developer, .monitor, .cleanup, .dockFinder, .apps: "System"
         case .health: "Care"
         }
     }

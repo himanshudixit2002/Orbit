@@ -448,6 +448,8 @@ struct HealthPage: View {
                 }
             }
 
+            DoctorPanel()
+
             SectionTitle(text: "Recent changes")
             GlassPanel {
                 VStack(alignment: .leading, spacing: 8) {
