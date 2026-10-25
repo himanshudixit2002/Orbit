@@ -67,6 +67,53 @@ struct LiveProbeCheck {
         }
     }
 
+    /// The bar's scripts run here against a stand-in `sketchybar` that only prints what it was asked
+    /// (they read yabai, launchctl and the disk; nothing on the real bar changes).
+    @Test func barScriptsOnThisMac() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "orbit-bar-\(UUID().uuidString.prefix(6))")
+        let plugins = dir.appending(path: "plugins")
+        let bin = dir.appending(path: "bin")
+        try FileManager.default.createDirectory(at: plugins, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try SketchyBarConfig.colors(.tokyoNight).write(to: dir.appending(path: "colors.sh"), atomically: true, encoding: .utf8)
+        for (name, text) in SketchyBarConfig.plugins { try text.write(to: plugins.appending(path: name), atomically: true, encoding: .utf8) }
+        try "#!/bin/sh\necho \"sketchybar $*\"\n".write(to: bin.appending(path: "sketchybar"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.appending(path: "sketchybar").path(percentEncoded: false))
+        var bar = BarSettings()
+        for item in BarItem.allCases { bar.setShown(item, true) }
+        bar.hideEmptySpaces = true
+        let rc = SketchyBarConfig.rc(bar)
+        try rc.write(to: dir.appending(path: "sketchybarrc"), atomically: true, encoding: .utf8)
+        func zsh(_ arguments: [String], env: [String: String] = [:]) throws -> String {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = arguments
+            process.environment = ["PATH": bin.path(percentEncoded: false) + ":/usr/bin:/bin:/usr/sbin:/sbin", "HOME": NSHomeDirectory(),
+                                   "CONFIG_DIR": dir.path(percentEncoded: false), "USER": NSUserName()].merging(env) { $1 }
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            try process.run()
+            process.waitUntilExit()
+            return String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self) + (process.terminationStatus == 0 ? "" : "[exit \(process.terminationStatus)]")
+        }
+        print("PROBE bar: rc syntax \(try zsh(["-n", dir.appending(path: "sketchybarrc").path(percentEncoded: false)]).isEmpty ? "ok" : "BROKEN")")
+        for name in SketchyBarConfig.plugins.keys.sorted() {
+            let path = plugins.appending(path: name).path(percentEncoded: false)
+            let syntax = try zsh(["-n", path])
+            print("PROBE bar: \(name) syntax \(syntax.isEmpty ? "ok" : syntax)")
+        }
+        for name in ["disk.sh", "services.sh", "git.sh", "spaces_shown.sh"] {
+            let out = try zsh([plugins.appending(path: name).path(percentEncoded: false)], env: ["NAME": name.replacingOccurrences(of: ".sh", with: ""), "SENDER": "forced"])
+            print("PROBE bar: \(name) → \(out.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+        let music = #"{"Player State":"Playing","Name":"Song","Artist":"Someone"}"#
+        print("PROBE bar: music.sh → \(try zsh([plugins.appending(path: "music.sh").path(percentEncoded: false)], env: ["NAME": "music", "INFO": music]).trimmingCharacters(in: .whitespacesAndNewlines))")
+        let clock = rc.split(separator: "\n").first { $0.contains("script='sketchybar --set") }.map { $0.split(separator: "'")[1] } ?? ""
+        print("PROBE bar: clock → \(try zsh(["-c", String(clock)], env: ["NAME": "clock"]).trimmingCharacters(in: .whitespacesAndNewlines))")
+        try? FileManager.default.trashItem(at: dir, resultingItemURL: nil)
+    }
+
     /// What theme sync would change on this Mac (it only reads).
     @Test func themeSyncOnThisMac() throws {
         let ctx = SystemContext.make(mode: .live)

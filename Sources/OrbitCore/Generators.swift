@@ -10,6 +10,10 @@ public enum YabaiConfig {
         "^(" + apps.map(Shell.regexEscape).joined(separator: "|") + ")$"
     }
 
+    /// The menu bar's git item follows the window in front: yabai nudges the bar each time one comes forward.
+    public static let barFocusLabel = "orbit-bar-focus"
+    public static let barFocusSignal = "yabai -m signal --add label=\(barFocusLabel) event=window_focused action=\"\(Tool.sketchybar) --trigger window_focus\""
+
     /// - Parameter barReserved: room to keep free at the top for SketchyBar, or nil when the bar is off.
     public static func render(_ settings: OrbitSettings, barReserved: Int?) -> String {
         func config(_ key: String, _ value: String) -> String {
@@ -17,10 +21,16 @@ public enum YabaiConfig {
         }
         let tiling = settings.tiling
         let floating = settings.floatingApps.map { Shell.insideDoubleQuotes(Shell.regexEscape($0)) }.joined(separator: "|")
+        let edge = settings.bar.position == .top ? "below" : "above"
         let bar = barReserved.map {
-            "# Keep windows below the menu bar (\(settings.bar.height)pt bar + \(settings.bar.yOffset)pt offset)\n"
-                + config("external_bar", "all:\($0):0")
+            "# Keep windows \(edge) the menu bar (\(settings.bar.height)pt bar + \(settings.bar.yOffset)pt offset)\n"
+                + config("external_bar", settings.bar.position == .top ? "all:\($0):0" : "all:0:\($0)")
         } ?? "# No custom menu bar, so windows may use the top of the screen\n" + config("external_bar", "all:0:0")
+        let focusSignal = barReserved != nil && settings.bar.showGit ? """
+
+        # Tell the menu bar when another window comes to the front (its git branch item follows it)
+        \(barFocusSignal)
+        """ : ""
         return """
         #!/usr/bin/env sh
         # Managed by Orbit (Windows page). Orbit notices hand edits and asks before replacing them;
@@ -58,7 +68,7 @@ public enum YabaiConfig {
         # After a window or app closes, focus whatever is under the mouse, else the first window
         refocus='yabai -m query --windows --window >/dev/null 2>&1 || yabai -m window --focus mouse >/dev/null 2>&1 || yabai -m window --focus "$(yabai -m query --windows --space | jq ".[0].id")" >/dev/null 2>&1'
         yabai -m signal --add event=window_destroyed active=yes action="$refocus"
-        yabai -m signal --add event=application_terminated action="$refocus"
+        yabai -m signal --add event=application_terminated action="$refocus"\(focusSignal)
 
         [ -f "$HOME/.config/yabai/yabairc.local" ] && . "$HOME/.config/yabai/yabairc.local"
         echo "yabai configuration loaded"
@@ -135,14 +145,14 @@ public enum SketchyBarConfig {
         var out = #"""
         #!/bin/zsh
         # Managed by Orbit (Menu Bar page). Orbit notices hand edits and asks before replacing them.
-        # Left: desktops and the current app. Centre: the Spotify track. Right: system stats and clock.
+        # Which items show, and where, is set on that page.
         # Click the Apple logo to open Orbit's quick panel.
 
         source "$CONFIG_DIR/colors.sh"
         PLUGINS="$CONFIG_DIR/plugins"
         FONT="JetBrainsMono Nerd Font"
 
-        sketchybar --bar position=top height=\#(bar.height) y_offset=\#(bar.yOffset) margin=10 corner_radius=12 \
+        sketchybar --bar position=\#(bar.position.rawValue) height=\#(bar.height) y_offset=\#(bar.yOffset) margin=10 corner_radius=12 \
                          color=$BAR_COLOR border_width=1 border_color=$BAR_BORDER \
                          blur_radius=30 shadow=on sticky=on padding_left=8 padding_right=8
 
@@ -156,14 +166,40 @@ public enum SketchyBarConfig {
 
         # ── Left ──────────────────────────────────────────────────────────────────────
         sketchybar --add item apple left \
-                   --set apple icon=$'' icon.font="$FONT:Bold:16.0" icon.color=$BLUE \
+                   --set apple icon=$'\#u{F179}' icon.font="$FONT:Bold:16.0" icon.color=$BLUE \
                          icon.padding_right=8 label.drawing=off click_script="open orbit://panel"
 
         """#
-        if bar.showSpaces {
+        for item in bar.items(on: .left) { out += block(item, side: .left, bar: bar, spaces: spaces) }
+        let middle = bar.items(on: .center)
+        if !middle.isEmpty {
+            out += "# ── Middle ────────────────────────────────────────────────────────────────────\n"
+            for item in middle { out += block(item, side: .center, bar: bar, spaces: spaces) }
+        }
+        out += "# ── Right (listed right to left) ──────────────────────────────────────────────\n"
+        for item in bar.items(on: .right).reversed() { out += block(item, side: .right, bar: bar, spaces: spaces) }
+        out += brackets(bar)
+        if bar.hideEmptySpaces, bar.showSpaces {
             out += #"""
+            # Only desktops with windows get a number (and the ones on screen)
+            sketchybar --add item spaces_shown left \
+                       --set spaces_shown drawing=off updates=on script="$PLUGINS/spaces_shown.sh" \
+                       --subscribe spaces_shown space_change space_windows_change display_change system_woke
+
+            """#
+        }
+        out += "sketchybar --update\n"
+        return out
+    }
+
+    /// One item's lines (sketchybar's position names match `BarSide`'s).
+    static func block(_ item: BarItem, side: BarSide, bar: BarSettings, spaces: Int) -> String {
+        let at = side.rawValue
+        switch item {
+        case .spaces:
+            return #"""
             for i in {1..\#(spaces)}; do
-              sketchybar --add space space.$i left \
+              sketchybar --add space space.$i \#(at) \
                          --set space.$i associated_space=$i icon=$i \
                                icon.padding_left=7 icon.padding_right=7 icon.color=$MUTED \
                                label.drawing=off background.color=$BLUE background.drawing=off \
@@ -171,81 +207,125 @@ public enum SketchyBarConfig {
             done
 
             """#
-        }
-        if bar.showFrontApp {
-            out += #"""
+        case .frontApp:
+            let divider = side != .left ? "" : #"""
             sketchybar --add item divider left \
-                       --set divider icon=$'│' icon.color=$MUTED label.drawing=off padding_left=6 padding_right=2 \
-                       --add item front_app left \
-                       --set front_app icon=$'' icon.color=$PURPLE label.font="$FONT:Bold:12.0" \
+                       --set divider icon=$'│' icon.color=$MUTED label.drawing=off padding_left=6 padding_right=2
+
+            """#
+            return divider + #"""
+            sketchybar --add item front_app \#(at) \
+                       --set front_app icon=$'\#u{F2D0}' icon.color=$PURPLE label.font="$FONT:Bold:12.0" \
                              script="$PLUGINS/front_app.sh" \
                        --subscribe front_app front_app_switched
 
             """#
-        }
-        if bar.showSpotify {
-            out += #"""
-            # ── Centre: Spotify ───────────────────────────────────────────────────────────
+        case .mode:
+            // Orbit sets its label when a mode starts or stops.
+            return #"""
+            sketchybar --add item mode \#(at) \
+                       --set mode icon=$'\#u{F135}' icon.color=$PURPLE label.font="$FONT:Bold:12.0" drawing=off \
+                             click_script="open orbit://panel"
+
+            """#
+        case .git:
+            return #"""
+            sketchybar --add event window_focus \
+                       --add item git \#(at) \
+                       --set git icon=$'\#u{E725}' icon.color=$GREEN drawing=off script="$PLUGINS/git.sh" \
+                       --subscribe git front_app_switched window_focus
+
+            """#
+        case .spotify:
+            return #"""
             sketchybar --add event spotify_change com.spotify.client.PlaybackStateChanged \
-                       --add item spotify center \
-                       --set spotify icon=$'' icon.color=$GREEN label.max_chars=42 drawing=off \
+                       --add item spotify \#(at) \
+                       --set spotify icon=$'\#u{F1BC}' icon.color=$GREEN label.max_chars=42 drawing=off \
                              script="$PLUGINS/spotify.sh" \
                        --subscribe spotify spotify_change
 
             """#
-        }
-        out += "# ── Right (listed right to left) ──────────────────────────────────────────────\n"
-        var stats: [String] = []
-        if bar.showClock {
-            out += #"""
-            sketchybar --add item clock right \
-                       --set clock icon=$'' icon.color=$BLUE update_freq=\#(clockFrequency) script="$PLUGINS/clock.sh"
+        case .music:
+            return #"""
+            sketchybar --add event music_change com.apple.Music.playerInfo \
+                       --add item music \#(at) \
+                       --set music icon=$'\#u{F001}' icon.color=$RED label.max_chars=42 drawing=off \
+                             script="$PLUGINS/music.sh" \
+                       --subscribe music music_change
 
             """#
-        }
-        if bar.showNetwork {
-            stats.append("wifi")
-            out += #"""
-            sketchybar --add item wifi right \
-                       --set wifi icon=$'' icon.color=$CYAN update_freq=30 script="$PLUGINS/wifi.sh" \
-                       --subscribe wifi wifi_change system_woke
+        case .services:
+            return #"""
+            sketchybar --add item services \#(at) \
+                       --set services icon=$'\#u{F1C0}' icon.color=$PURPLE drawing=off update_freq=60 \
+                             script="$PLUGINS/services.sh" click_script="open orbit://page/developer"
 
             """#
-        }
-        if bar.showVolume {
-            stats.append("volume")
-            out += #"""
-            sketchybar --add item volume right \
+        case .disk:
+            return #"""
+            sketchybar --add item disk \#(at) \
+                       --set disk icon=$'\#u{F0A0}' icon.color=$CYAN update_freq=120 script="$PLUGINS/disk.sh"
+
+            """#
+        case .cpu:
+            return #"""
+            sketchybar --add item cpu \#(at) \
+                       --set cpu icon=$'\#u{F4BC}' icon.color=$GREEN update_freq=\#(cpuFrequency) script="$PLUGINS/cpu.sh"
+
+            """#
+        case .memory:
+            return #"""
+            sketchybar --add item memory \#(at) \
+                       --set memory icon=$'\#u{F2DB}' icon.color=$AMBER update_freq=\#(memoryFrequency) script="$PLUGINS/memory.sh"
+
+            """#
+        case .volume:
+            return #"""
+            sketchybar --add item volume \#(at) \
                        --set volume icon.color=$PURPLE script="$PLUGINS/volume.sh" \
                        --subscribe volume volume_change
 
             """#
-        }
-        if bar.showMemory {
-            stats.append("memory")
-            out += #"""
-            sketchybar --add item memory right \
-                       --set memory icon=$'' icon.color=$AMBER update_freq=\#(memoryFrequency) script="$PLUGINS/memory.sh"
+        case .network:
+            return #"""
+            sketchybar --add item wifi \#(at) \
+                       --set wifi icon=$'\#u{F1EB}' icon.color=$CYAN update_freq=30 script="$PLUGINS/wifi.sh" \
+                       --subscribe wifi wifi_change system_woke
+
+            """#
+        case .clock:
+            return #"""
+            sketchybar --add item clock \#(at) \
+                       --set clock icon=$'\#u{F073}' icon.color=$BLUE update_freq=\#(clockFrequency) \
+                             script='sketchybar --set "$NAME" label="$(date "+\#(bar.clockFormat.strftime)")"'
 
             """#
         }
-        if bar.showCPU {
-            stats.append("cpu")
-            out += #"""
-            sketchybar --add item cpu right \
-                       --set cpu icon=$'' icon.color=$GREEN update_freq=\#(cpuFrequency) script="$PLUGINS/cpu.sh"
+    }
 
-            """#
+    /// Numbers side by side share one pill: a bracket for each run of them.
+    static func brackets(_ bar: BarSettings) -> String {
+        var runs: [[BarItem]] = []
+        for side in BarSide.allCases {
+            var run: [BarItem] = []
+            for item in bar.items(on: side) {
+                if item.isStat {
+                    run.append(item)
+                } else if !run.isEmpty {
+                    runs.append(run)
+                    run = []
+                }
+            }
+            if !run.isEmpty { runs.append(run) }
         }
-        if !stats.isEmpty {
-            out += """
-            sketchybar --add bracket stats \(stats.reversed().joined(separator: " ")) \\
-                       --set stats background.color=$PILL background.height=26 background.corner_radius=9
+        return runs.enumerated().map { index, run in
+            let name = index == 0 ? "stats" : "stats\(index + 1)"
+            return """
+            sketchybar --add bracket \(name) \(run.map(\.barName).joined(separator: " ")) \\
+                       --set \(name) background.color=$PILL background.height=26 background.corner_radius=9
 
             """
-        }
-        out += "sketchybar --update\n"
-        return out
+        }.joined()
     }
 
     /// The plugin scripts the bar runs. Orbit writes any that are missing.
@@ -322,6 +402,67 @@ public enum SketchyBarConfig {
         cpu=$(/bin/ps -A -o %cpu= | awk -v n=$(sysctl -n hw.ncpu) '{s+=$1} END {v=s/n; printf "%d", (v>100?100:v)}')
         color=$GREEN; (( cpu > 70 )) && color=$AMBER; (( cpu > 90 )) && color=$RED
         sketchybar --set "$NAME" label="${cpu}%" icon.color=$color
+
+        """#,
+        "music.sh": #"""
+        #!/bin/zsh
+        # Shows the song playing in Apple Music; hides itself when paused or stopped.
+        state=$(\#(Tool.jq) -r '.["Player State"] // empty' <<<"$INFO" 2>/dev/null)
+        if [ "$state" = Playing ]; then
+          track=$(\#(Tool.jq) -r '"\(.Name) · \(.Artist)"' <<<"$INFO")
+          sketchybar --set "$NAME" drawing=on label="$track"
+        else
+          sketchybar --set "$NAME" drawing=off
+        fi
+
+        """#,
+        "disk.sh": #"""
+        #!/bin/zsh
+        # Free space on the Mac's disk; amber under 20 GB, red under 10 GB.
+        source "$CONFIG_DIR/colors.sh"
+        free=$(/bin/df -k /System/Volumes/Data | awk 'NR==2 {printf "%d", $4/1048576}')
+        color=$CYAN; (( free < 20 )) && color=$AMBER; (( free < 10 )) && color=$RED
+        sketchybar --set "$NAME" label="${free}G" icon.color=$color
+
+        """#,
+        "services.sh": #"""
+        #!/bin/zsh
+        # How many Homebrew services (databases and the like) are running; hidden when none are.
+        count=$(/bin/launchctl list | awk '$1 != "-" && $3 ~ /^homebrew\.mxcl\./ && $3 !~ /\.(borders|sketchybar)$/ {n++} END {print n+0}')
+        if (( count > 0 )); then
+          sketchybar --set "$NAME" drawing=on label="$count"
+        else
+          sketchybar --set "$NAME" drawing=off
+        fi
+
+        """#,
+        "git.sh": #"""
+        #!/bin/zsh
+        # The git branch of the project in the window you're using: the project in ~/Developer whose
+        # folder name is in the window's title (editors and terminals put it there). Hidden otherwise.
+        title=$(\#(Tool.yabai) -m query --windows --window 2>/dev/null | \#(Tool.jq) -r '.title // empty')
+        best="" dir=""
+        for d in $HOME/Developer/*/.git(N:h) $HOME/Developer/*/*/.git(N:h); do
+          name=${d:t}
+          if [[ " $title " == *[^[:alnum:]]"$name"[^[:alnum:]]* && ${#name} -gt ${#best} ]]; then best=$name; dir=$d; fi
+        done
+        branch=$([ -n "$dir" ] && \#(Tool.git) -C "$dir" branch --show-current 2>/dev/null)
+        if [ -n "$branch" ]; then
+          sketchybar --set "$NAME" drawing=on label="$best  $branch"
+        else
+          sketchybar --set "$NAME" drawing=off
+        fi
+
+        """#,
+        "spaces_shown.sh": #"""
+        #!/bin/zsh
+        # Shows the desktops that have windows, and the ones on screen; hides the rest.
+        spaces=$(\#(Tool.yabai) -m query --spaces 2>/dev/null) || exit 0
+        args=()
+        while read -r index shown; do
+          args+=(--set "space.$index" drawing=$([ "$shown" = true ] && echo on || echo off))
+        done < <(\#(Tool.jq) -r '.[] | "\(.index) \(((.windows | length) > 0) or ."is-visible")"' <<<"$spaces")
+        (( ${#args} )) && sketchybar "${args[@]}"
 
         """#
     ]

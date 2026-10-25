@@ -141,13 +141,60 @@ public struct BarSettings: Codable, Sendable, Equatable {
     public var showVolume = true
     public var showNetwork = true
     public var showClock = true
+    public var showMode = false
+    public var showGit = false
+    public var showMusic = false
+    public var showDisk = false
+    public var showServices = false
     public var height = 34
     public var yOffset = 6
+    public var position: BarPosition = .top
+    public var clockFormat: ClockFormat = .dayDateTime
+    /// Only desktops with windows (and the one you're on) get a number in the bar.
+    public var hideEmptySpaces = false
+    /// Where the items sit: in order from the left, each on its side. Items it doesn't mention take their
+    /// usual place at the end of theirs.
+    public var layout = BarSettings.defaultLayout
 
     public init() {}
 
-    /// Room yabai keeps free at the top of the screen while the bar is on.
+    private enum CodingKeys: String, CodingKey {
+        case showSpaces, showFrontApp, showSpotify, showCPU, showMemory, showVolume, showNetwork, showClock,
+             showMode, showGit, showMusic, showDisk, showServices, height, yOffset, position, clockFormat, hideEmptySpaces, layout
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        showSpaces = c.value(.showSpaces, or: true)
+        showFrontApp = c.value(.showFrontApp, or: true)
+        showSpotify = c.value(.showSpotify, or: true)
+        showCPU = c.value(.showCPU, or: true)
+        showMemory = c.value(.showMemory, or: true)
+        showVolume = c.value(.showVolume, or: true)
+        showNetwork = c.value(.showNetwork, or: true)
+        showClock = c.value(.showClock, or: true)
+        showMode = c.value(.showMode, or: false)
+        showGit = c.value(.showGit, or: false)
+        showMusic = c.value(.showMusic, or: false)
+        showDisk = c.value(.showDisk, or: false)
+        showServices = c.value(.showServices, or: false)
+        height = c.value(.height, or: 34)
+        yOffset = c.value(.yOffset, or: 6)
+        position = c.value(.position, or: .top)
+        clockFormat = c.value(.clockFormat, or: .dayDateTime)
+        hideEmptySpaces = c.value(.hideEmptySpaces, or: false)
+        // An item a newer Orbit added is skipped, not a reason to lose the whole layout.
+        layout = c.value(.layout, or: [Lenient<BarPlacement>]?.none)?.compactMap(\.value) ?? Self.defaultLayout
+    }
+
+    /// Room yabai keeps free at the top (or bottom) of the screen while the bar is on.
     public var reservedSpace: Int { height + yOffset }
+
+    /// yabai's `external_bar`: the room kept at the top and bottom of every screen.
+    public func externalBar(on: Bool) -> String {
+        guard on else { return "all:0:0" }
+        return position == .top ? "all:\(reservedSpace):0" : "all:0:\(reservedSpace)"
+    }
 }
 
 /// What holding Caps Lock and a key does.

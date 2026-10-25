@@ -94,6 +94,46 @@ import Testing
     }
 }
 
+@Suite struct BarV2ActionTests {
+    @Test func aBarAtTheBottomKeepsRoomThere() async throws {
+        let system = FakeSystem()
+        system.load(Helper.sketchybar.label)
+        system.load(Helper.yabai.label)
+        let ctx = try sandboxContext(system)
+        var bar = BarSettings()
+        bar.position = .bottom
+        #expect(try await Actions(ctx).applyBar(bar).ok)
+        #expect(system.ran("yabai", "-m", "config", "external_bar", "all:0:40"))
+        #expect(try String(contentsOf: ctx.paths.sketchybarrc, encoding: .utf8).contains("position=bottom"))
+    }
+
+    @Test func theGitItemGetsItsScriptAndYabaisNudge() async throws {
+        let system = FakeSystem()
+        system.load(Helper.sketchybar.label)
+        system.load(Helper.yabai.label)
+        let ctx = try sandboxContext(system)
+        var bar = BarSettings()
+        bar.showGit = true
+        #expect(try await Actions(ctx).applyBar(bar).ok)
+        #expect(system.ran("yabai", "-m", "signal", "--add", "label=orbit-bar-focus", "event=window_focused",
+                           "action=\(Tool.sketchybar) --trigger window_focus"))
+        let plugin = ctx.paths.sketchybarDir.appending(path: "plugins/git.sh")
+        #expect(FileManager.default.isExecutableFile(atPath: plugin.path(percentEncoded: false)))
+    }
+
+    @Test func aPluginYouChangedIsNeverReplaced() async throws {
+        let system = FakeSystem()
+        let ctx = try sandboxContext(system)
+        let plugin = ctx.paths.sketchybarDir.appending(path: "plugins/disk.sh")
+        try FileManager.default.createDirectory(at: plugin.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/zsh\n# mine\n".utf8).write(to: plugin)
+        var bar = BarSettings()
+        bar.showDisk = true
+        #expect(try await Actions(ctx).applyBar(bar).ok)
+        #expect(try String(contentsOf: plugin, encoding: .utf8) == "#!/bin/zsh\n# mine\n")
+    }
+}
+
 @Suite struct FloatingAppsTests {
     @Test func floatingAppsChangeLiveAndUndoPutsThemBack() async throws {
         let system = FakeSystem()

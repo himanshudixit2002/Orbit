@@ -59,6 +59,6 @@ import Testing
         let rc = SketchyBarConfig.rc(BarSettings())
         #expect(rc.contains("update_freq=3 script=\"$PLUGINS/cpu.sh\""))
         #expect(rc.contains("update_freq=5 script=\"$PLUGINS/memory.sh\""))
-        #expect(rc.contains("update_freq=10 script=\"$PLUGINS/clock.sh\""))
+        #expect(rc.contains("update_freq=10 \\\n                 script='sketchybar --set \"$NAME\" label=\"$(date \"+%a %d %b  %H:%M\")\"'"))
     }
 }

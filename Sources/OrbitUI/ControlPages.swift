@@ -221,10 +221,8 @@ struct MenuBarPage: View {
     @State private var bar = BarSettings()
     @State private var loaded = false
 
-    var items: [(String, String, WritableKeyPath<BarSettings, Bool>)] {
-        [("Desktops", "square.grid.3x1.below.line.grid.1x2", \.showSpaces), ("Current app", "app.badge", \.showFrontApp),
-         ("Spotify song", "music.note", \.showSpotify), ("Processor", "cpu", \.showCPU), ("Memory", "memorychip", \.showMemory),
-         ("Volume", "speaker.wave.2.fill", \.showVolume), ("Network", "wifi", \.showNetwork), ("Clock", "clock.fill", \.showClock)]
+    func shown(_ item: BarItem) -> Binding<Bool> {
+        Binding(get: { bar.isShown(item) }, set: { bar.setShown(item, $0) })
     }
 
     var body: some View {
@@ -239,20 +237,45 @@ struct MenuBarPage: View {
                     Divider()
                     Text("Show in the bar").font(.headline)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 10)], spacing: 10) {
-                        ForEach(items, id: \.0) { item in
-                            Toggle(isOn: $bar[dynamicMember: item.2]) {
-                                Label(item.0, systemImage: item.1)
+                        ForEach(BarItem.allCases) { item in
+                            Toggle(isOn: shown(item)) {
+                                Label(item.title, systemImage: item.symbol)
                             }
                             .toggleStyle(.button)
                             .buttonStyle(.glass)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .help(item.blurb)
                         }
                     }
+                    Text("Where they sit").font(.headline).padding(.top, 4)
+                    Text("Click an item to move it along, or to another part of the bar.").font(.caption).foregroundStyle(.secondary)
+                    BarLayoutEditor(bar: $bar)
+                    SettingRow(title: "Position", detail: bar.position == .top ? "Across the top; the Mac's own menus slide down when you point there"
+                                                                             : "Along the bottom; the Mac's own menu bar stays at the top") {
+                        Picker("Position", selection: $bar.position) {
+                            Text("Top").tag(BarPosition.top)
+                            Text("Bottom").tag(BarPosition.bottom)
+                        }
+                        .pickerStyle(.segmented).labelsHidden().frame(width: 160)
+                    }
+                    SettingRow(title: "Clock", detail: BarFeed.clockLabel(Date(), format: bar.clockFormat)) {
+                        Picker("Clock", selection: $bar.clockFormat) {
+                            ForEach(ClockFormat.allCases) { format in
+                                Text(BarFeed.clockLabel(Date(), format: format)).tag(format)
+                            }
+                        }
+                        .labelsHidden().frame(width: 220)
+                    }
+                    .disabled(!bar.showClock)
+                    SettingRow(title: "Hide empty desktops", detail: "Only desktops with windows, and the ones on screen, get a number") {
+                        Toggle("Hide empty desktops", isOn: $bar.hideEmptySpaces).toggleStyle(.switch).labelsHidden()
+                    }
+                    .disabled(!bar.showSpaces)
                     SettingRow(title: "Height", detail: "\(bar.height) points") {
                         Slider(value: Binding(get: { Double(bar.height) }, set: { bar.height = Int($0) }), in: 26...44, step: 2)
                             .frame(width: 260)
                     }
-                    SettingRow(title: "Gap above it", detail: "\(bar.yOffset) points from the top of the screen") {
+                    SettingRow(title: "Gap from the edge", detail: "\(bar.yOffset) points from the \(bar.position.rawValue) of the screen") {
                         Slider(value: Binding(get: { Double(bar.yOffset) }, set: { bar.yOffset = Int($0) }), in: 0...14, step: 1)
                             .frame(width: 260)
                     }
@@ -272,10 +295,47 @@ struct MenuBarPage: View {
     }
 }
 
-extension BarSettings {
-    subscript(dynamicMember keyPath: WritableKeyPath<BarSettings, Bool>) -> Bool {
-        get { self[keyPath: keyPath] }
-        set { self[keyPath: keyPath] = newValue }
+/// The bar's three parts with the items shown in each, in order; each item's menu moves it.
+struct BarLayoutEditor: View {
+    @Binding var bar: BarSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(BarSide.allCases) { side in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(side.title).font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
+                    let items = bar.items(on: side)
+                    if items.isEmpty {
+                        Text("Nothing here").font(.caption).foregroundStyle(.tertiary)
+                    } else {
+                        FlowLayout(spacing: 6) {
+                            ForEach(items) { item in chip(item, side: side, first: item == items.first, last: item == items.last) }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    func chip(_ item: BarItem, side: BarSide, first: Bool, last: Bool) -> some View {
+        Menu {
+            Button("Move left", systemImage: "arrow.left") { bar.move(item, by: -1) }.disabled(first)
+            Button("Move right", systemImage: "arrow.right") { bar.move(item, by: 1) }.disabled(last)
+            Divider()
+            ForEach(BarSide.allCases.filter { $0 != side }) { other in
+                Button("Move to the \(other.title.lowercased())") { bar.setSide(item, other) }
+            }
+            Divider()
+            Button("Hide", systemImage: "eye.slash") { bar.setShown(item, false) }
+        } label: {
+            Label(item.title, systemImage: item.symbol).font(.caption)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.glass)
+        .fixedSize()
+        .accessibilityHint("Moves \(item.title) in the bar")
     }
 }
 

@@ -54,6 +54,15 @@ public indirect enum JSONValue: Codable, Sendable, Hashable {
     }
 }
 
+/// One element of a saved list that may not decode (written by a newer Orbit, say): nil instead of an error.
+public struct Lenient<T: Decodable>: Decodable {
+    public let value: T?
+
+    public init(from decoder: Decoder) throws {
+        value = try? T(from: decoder)
+    }
+}
+
 /// Decoding that keeps what's there and uses the default for anything missing or unreadable, for
 /// types saved in lists (modes, Hyper keys): a newer Orbit adding a field must not make the list,
 /// and with it all the settings, unreadable.

@@ -140,10 +140,17 @@ public final class AppModel {
         publisher = SnapshotPublisher(store: SharedStore(practice: ctx.mode == .practice, home: ctx.paths.home))
         modes.changed = { [weak self] record in
             self?.publishSnapshot()
+            self?.feedBar()
             self?.armModeAlarm()
             // What a mode couldn't do (a hand-edited file it left alone, say) is said once it's on.
             if let notes = record?.notes, !notes.isEmpty { self?.show(Toast(ok: false, message: notes.joined(separator: " "), journalID: nil)) }
         }
+    }
+
+    /// Tells the bar feeder what to show: the stats and clock, and the mode that's on.
+    func feedBar() {
+        barFeeder.update(running: status.menuBar.run.isRunning, barPID: status.menuBar.run.pid, bar: settings.bar,
+                         palette: settings.palette, mode: modes.active.map { modes.name($0) })
     }
 
     public static func launch(mode: RunMode) -> AppModel {
@@ -353,7 +360,7 @@ public final class AppModel {
         let practice = ctx.practiceLog.all
         if practice != practiceLog { practiceLog = practice }
         exitWatcher?.watch(fresh.helperPIDs)
-        barFeeder.update(running: status.menuBar.run.isRunning, barPID: status.menuBar.run.pid, bar: settings.bar, palette: settings.palette)
+        feedBar()
         publishSnapshot()
         noticeNewAttention()
         syncInstantSorting()

@@ -168,6 +168,15 @@ public enum Commands {
                 summary: "Set window tiling's \(key) to \(value)", timeout: 3)
     }
 
+    /// yabai nudging the menu bar's git item when a window comes to the front, or no longer.
+    public static func barFocusSignal(_ on: Bool) -> Command {
+        let arguments = on ? ["-m", "signal", "--add", "label=\(YabaiConfig.barFocusLabel)", "event=window_focused",
+                              "action=\(Tool.sketchybar) --trigger window_focus"]
+                           : ["-m", "signal", "--remove", YabaiConfig.barFocusLabel]
+        return Command(Tool.yabai, arguments, effect: .service,
+                       summary: on ? "Let the menu bar follow the window in front" : "Stop nudging the menu bar", timeout: 3, okStatuses: [0, 1])
+    }
+
     public static func yabaiLayout(_ layout: TilingLayout) -> Command {
         Command(Tool.yabai, ["-m", "config", "layout", layout.rawValue], effect: .service,
                 summary: "Arrange windows as \(layout.title.lowercased())", timeout: 3)

@@ -9,6 +9,7 @@ public final class BarFeeder: Sendable {
         var bar: BarSettings
         var palette: Palette
         var barPID: Int?
+        var mode: String?
     }
 
     private struct State {
@@ -31,9 +32,9 @@ public final class BarFeeder: Sendable {
     }
 
     /// Feeds the bar while it's running, with these settings' items and colours.
-    public func update(running: Bool, barPID: Int?, bar: BarSettings, palette: Palette) {
-        let wanted = running && ctx.mode == .live && !BarFeed.items(bar).isEmpty
-        let plan = wanted ? Plan(bar: bar, palette: palette, barPID: barPID) : nil
+    public func update(running: Bool, barPID: Int?, bar: BarSettings, palette: Palette, mode: String? = nil) {
+        let wanted = running && ctx.mode == .live && BarFeed.feeds(bar)
+        let plan = wanted ? Plan(bar: bar, palette: palette, barPID: barPID, mode: mode) : nil
         state.withLock { s in
             guard s.plan != plan else { return }
             s.plan = plan
@@ -77,7 +78,7 @@ public final class BarFeeder: Sendable {
         guard let plan else { return }
         let reading = sampler.cpuAndMemory()
         let values = BarFeedValues(cpu: reading.cpu.map(BarFeed.cpuPercent), memory: BarFeed.memoryLabel(reading.memoryUsed),
-                                   clock: BarFeed.clockLabel(clock()))
+                                   clock: BarFeed.clockLabel(clock(), format: plan.bar.clockFormat), mode: plan.mode)
         guard let command = BarFeed.command(values, last: last, bar: plan.bar, palette: plan.palette) else { return }
         let result = await ctx.run(command)
         state.withLock { s in

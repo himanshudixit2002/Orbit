@@ -1,16 +1,19 @@
 import Foundation
 
-/// What Orbit shows in the menu bar's CPU, memory and clock items.
+/// What Orbit shows in the menu bar's CPU, memory, clock and mode items.
 public struct BarFeedValues: Sendable, Equatable {
     /// Percent across all cores; nil until there are two readings to compare.
     public var cpu: Int?
     public var memory: String
     public var clock: String
+    /// The Orbit mode that's on, by name.
+    public var mode: String?
 
-    public init(cpu: Int?, memory: String, clock: String) {
+    public init(cpu: Int?, memory: String, clock: String, mode: String? = nil) {
         self.cpu = cpu
         self.memory = memory
         self.clock = clock
+        self.mode = mode
     }
 }
 
@@ -32,6 +35,9 @@ public enum BarFeed {
         return items
     }
 
+    /// Whether Orbit has anything to feed: the stats and clock, or the mode (which only Orbit knows).
+    public static func feeds(_ bar: BarSettings) -> Bool { !items(bar).isEmpty || bar.showMode }
+
     /// Whole percent, as the bar's script shows it (rounded down, at most 100).
     public static func cpuPercent(_ load: Double) -> Int { min(100, max(0, Int(load * 100))) }
 
@@ -45,12 +51,12 @@ public enum BarFeed {
         String(format: "%.1fG", Double(bytes) / 1_073_741_824)
     }
 
-    /// "Sun 25 Oct  14:05", as the script's `date '+%a %d %b  %H:%M'` writes it.
-    public static func clockLabel(_ date: Date, timeZone: TimeZone = .current) -> String {
+    /// "Sun 25 Oct  14:05", as the bar's own clock script writes it in the same format.
+    public static func clockLabel(_ date: Date, format: ClockFormat = .dayDateTime, timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
-        formatter.dateFormat = "EEE dd MMM  HH:mm"
+        formatter.dateFormat = format.dateFormat
         return formatter.string(from: date)
     }
 
@@ -71,6 +77,9 @@ public enum BarFeed {
                 guard last == nil || last?.clock != values.clock else { continue }
                 arguments += ["--set", name, "label=\(values.clock)", slow]
             }
+        }
+        if bar.showMode, last == nil || last?.mode != values.mode {
+            arguments += ["--set", "mode"] + (values.mode.map { ["drawing=on", "label=\($0)"] } ?? ["drawing=off"])
         }
         guard !arguments.isEmpty else { return nil }
         return Command(Tool.sketchybar, arguments, effect: .display, summary: "Update the menu bar's numbers", timeout: 5)

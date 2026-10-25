@@ -374,13 +374,15 @@ public struct Actions: Sendable {
 
     // MARK: Menu bar
 
-    func writeBarFiles(rc: String, colors: String, backups: URL, into undo: UndoRecorder) throws {
+    /// The bar's files: its layout, its colours (when given) and any plugin that's missing. A plugin
+    /// that's there is the user's to change, so it's never replaced.
+    func writeBarFiles(rc: String, colors: String?, backups: URL, into undo: UndoRecorder) throws {
         let plugins = paths.sketchybarDir.appending(path: "plugins")
         for (name, text) in SketchyBarConfig.plugins.sorted(by: { $0.key < $1.key })
         where !ctx.files.exists(plugins.appending(path: name)) {
             undo += try writePlain(plugins.appending(path: name), text, executable: true, backups: backups)
         }
-        undo += try write(.sketchybarColors, colors, executable: true, backups: backups)
+        if let colors { undo += try write(.sketchybarColors, colors, executable: true, backups: backups) }
         undo += try write(.sketchybarrc, rc, executable: true, backups: backups)
     }
 
@@ -399,10 +401,17 @@ public struct Actions: Sendable {
         return [.restorePreference(domain: WatchedPreferences.globalDomain, key: key, value: old)]
     }
 
-    /// Tells tiling how much room the bar needs, live and in its config file (written only if it exists).
+    /// Whether the Mac's own menu bar hid itself before Orbit.
+    var macMenuBarHiddenBefore: Bool {
+        ctx.store.baseline?.preferences[Baseline.key(WatchedPreferences.globalDomain, "_HIHideMenuBar")]?.boolValue ?? false
+    }
+
+    /// Tells tiling how much room the bar needs (and whether to nudge its git item), live and in its
+    /// config file (written only if it exists). Reads the bar's settings as they are now.
     func reserveBarSpace(_ on: Bool, yabairc: String, backups: URL) async throws -> [UndoAction] {
         if await isRunning(.yabai) {
-            await ctx.run(Commands.yabaiConfig("external_bar", "all:\(on ? settings.bar.reservedSpace : 0):0"))
+            await ctx.run(Commands.yabaiConfig("external_bar", settings.bar.externalBar(on: on)))
+            await ctx.run(Commands.barFocusSignal(on && settings.bar.showGit))
         }
         guard ctx.files.exists(paths.yabairc) else { return [] }
         return try write(.yabairc, yabairc, executable: true, backups: backups)
@@ -422,7 +431,7 @@ public struct Actions: Sendable {
         if on {
             return await steps { undo in
                 try writeBarFiles(rc: rc, colors: colors, backups: backups, into: undo)
-                undo += await setMacMenuBarHidden(true)
+                undo += await setMacMenuBarHidden(settings.bar.position == .top ? true : macMenuBarHiddenBefore)
                 undo += try await reserveBarSpace(true, yabairc: yabairc, backups: backups)
                 undo += try await setHelper(.sketchybar, on: true)
                 return "The new menu bar is on. Point at the top of the screen for the Mac's own menus."
@@ -430,8 +439,7 @@ public struct Actions: Sendable {
         }
         return await steps { undo in
             undo += try await setHelper(.sketchybar, on: false)
-            let before = ctx.store.baseline?.preferences[Baseline.key(WatchedPreferences.globalDomain, "_HIHideMenuBar")]?.boolValue ?? false
-            undo += await setMacMenuBarHidden(before)
+            undo += await setMacMenuBarHidden(macMenuBarHiddenBefore)
             undo += try await reserveBarSpace(false, yabairc: yabairc, backups: backups)
             return "The new menu bar is off."
         }
@@ -439,20 +447,24 @@ public struct Actions: Sendable {
 
     public func applyBar(_ bar: BarSettings, policy: WritePolicy = .askIfEdited) async throws -> ActionOutcome {
         let rc = SketchyBarConfig.rc(bar)
+        let old = settings.bar
         var next = settings
         next.bar = bar
         let barOn = await isRunning(.sketchybar)
-        // The room tiling leaves at the top follows the bar's height and offset.
-        let moved = barOn && bar.reservedSpace != settings.bar.reservedSpace
+        // Tiling's room for the bar follows its size and edge, and its git item needs yabai's nudge.
+        let tilingChanges = barOn && (bar.reservedSpace != old.reservedSpace || bar.position != old.position || bar.showGit != old.showGit)
         let yabairc = YabaiConfig.render(next, barReserved: bar.reservedSpace)
         var proposed: [ManagedFile: String] = [.sketchybarrc: rc]
-        if moved, ctx.files.exists(paths.yabairc) { proposed[.yabairc] = yabairc }
+        if tilingChanges, ctx.files.exists(paths.yabairc) { proposed[.yabairc] = yabairc }
         try checkEdits(proposed, policy: policy)
         let backups = backupFolder("menu bar items")
         return await steps { undo in
             undo += changeSettings { $0.bar = bar }
-            undo += try write(.sketchybarrc, rc, executable: true, backups: backups)
-            if moved { undo += try await reserveBarSpace(true, yabairc: yabairc, backups: backups) }
+            try writeBarFiles(rc: rc, colors: nil, backups: backups, into: undo)
+            if tilingChanges { undo += try await reserveBarSpace(true, yabairc: yabairc, backups: backups) }
+            if barOn, bar.position != old.position {
+                undo += await setMacMenuBarHidden(bar.position == .top ? true : macMenuBarHiddenBefore)
+            }
             if barOn { await ctx.run(Commands.sketchybarReload()) }
             return "Menu bar updated."
         }
