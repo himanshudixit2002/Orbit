@@ -69,3 +69,21 @@ import Testing
         #expect(script.contains(#"    *) echo 'Misc'\''s' ;;"#))
     }
 }
+
+@Suite struct SimulatorRuntimeTests {
+    @Test func theRuntimeListIsRead() throws {
+        let text = """
+        == Disk Images ==
+        -- iOS --
+        iOS 26.1 (23B86) - 5060E103-3B22-49AB-94F9-E5F8EEB1F0F3 (Ready)
+        -- watchOS --
+        watchOS 26.0 (23R354) - 11111111-3B22-49AB-94F9-E5F8EEB1F0F3 (Ready)
+
+        Total Disk Images: 2 (12.5G)
+        """
+        let runtimes = try #require(SimulatorRuntimes.parse(text))
+        #expect(runtimes.detail == "iOS 26.1, watchOS 26.0")
+        #expect(runtimes.size == 12_500_000_000)
+        #expect(SimulatorRuntimes.parse("== Disk Images ==\nTotal Disk Images: 0 (0B)") == nil)
+    }
+}

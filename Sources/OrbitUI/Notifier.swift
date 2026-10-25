@@ -8,7 +8,7 @@ import UserNotifications
 @MainActor
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     enum Kind: String, CaseIterable {
-        case failed, keepsStopping, attention, changed, edited
+        case failed, keepsStopping, attention, changed, edited, lowDisk
 
         /// The button that does something about it (Open Orbit is always there too).
         var act: String? {
@@ -17,6 +17,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             case .attention: "Fix"
             case .changed: "Undo"
             case .edited: "Review"
+            case .lowDisk: "Clean Up"
             case .keepsStopping: nil
             }
         }
@@ -32,7 +33,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
         let open = UNNotificationAction(identifier: "open", title: "Open Orbit", options: [.foreground])
         center.setNotificationCategories(Set(Kind.allCases.map { kind in
-            let act = kind.act.map { UNNotificationAction(identifier: "act", title: $0, options: kind == .edited ? [.foreground] : []) }
+            let act = kind.act.map { UNNotificationAction(identifier: "act", title: $0, options: [.edited, .lowDisk].contains(kind) ? [.foreground] : []) }
             return UNNotificationCategory(identifier: kind.rawValue, actions: (act.map { [$0] } ?? []) + [open], intentIdentifiers: [])
         }))
     }

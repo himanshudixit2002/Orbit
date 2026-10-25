@@ -396,6 +396,7 @@ struct ModeCard: View {
 struct CleanupPage: View {
     @Environment(AppModel.self) private var model
     @State private var includeDownloads = false
+    @State private var showing: CleanupItem?
 
     var body: some View {
         let cleanup = model.cleanup
@@ -410,7 +411,7 @@ struct CleanupPage: View {
                             .foregroundStyle(Hue.yellow.gradient)
                             .frame(width: 140, height: 140)
                     } else {
-                        Chart(visible) { item in
+                        Chart(visible.filter { $0.safety != .guideOnly }) { item in
                             SectorMark(angle: .value("Size", Double(item.size)), innerRadius: .ratio(0.6), angularInset: 2)
                                 .foregroundStyle(by: .value("Kind", item.kind.rawValue))
                                 .cornerRadius(4)
@@ -419,25 +420,34 @@ struct CleanupPage: View {
                         .frame(width: 140, height: 140)
                         .overlay {
                             VStack(spacing: 0) {
-                                Text(bytes(cleanup.total)).font(.headline)
-                                Text("can go").font(.caption).foregroundStyle(.secondary)
+                                Text(bytes(cleanup.selectedSize)).font(.headline)
+                                Text("ticked").font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(bytes(cleanup.total)) found, \(bytes(cleanup.selectedSize)) ticked")
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(cleanup.scannedAt == nil ? "See what's taking up space" : "\(bytes(cleanup.total)) you can safely clear")
+                        Text(cleanup.scannedAt == nil ? "See what's taking up space" : "\(bytes(cleanup.total)) you could clear")
                             .font(.title2.weight(.bold))
-                        Text("Only things that rebuild themselves are listed. They go to the Trash, so you can put them back.")
+                        Text("Things that come back by themselves are ticked. Everything goes to the Trash, and one Undo puts it all back.")
                             .foregroundStyle(.secondary)
                         Toggle("Also look for downloads older than a month", isOn: $includeDownloads)
-                        Button {
-                            Task { await model.cleanup.scan(includeDownloads: includeDownloads) }
-                        } label: {
-                            Label(cleanup.scanning ? "Looking…" : (cleanup.scannedAt == nil ? "Scan my Mac" : "Scan again"),
-                                  systemImage: "sparkle.magnifyingglass")
+                        HStack {
+                            Button {
+                                Task { await model.cleanup.scan(includeDownloads: includeDownloads) }
+                            } label: {
+                                Label(cleanup.scanning ? "Looking…" : (cleanup.scannedAt == nil ? "Scan my Mac" : "Scan again"),
+                                      systemImage: "sparkle.magnifyingglass")
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(cleanup.scanning)
+                            if cleanup.scannedAt != nil {
+                                Button("Clear selected (\(bytes(cleanup.selectedSize)))") { model.clearSelected() }
+                                    .buttonStyle(.glassProminent)
+                                    .disabled(cleanup.selectedItems.isEmpty || model.isBusy("cleanup-selected"))
+                            }
                         }
-                        .buttonStyle(.glassProminent)
-                        .disabled(cleanup.scanning)
                     }
                     Spacer(minLength: 0)
                 }
@@ -448,31 +458,109 @@ struct CleanupPage: View {
                 if !items.isEmpty {
                     SectionTitle(text: kind.rawValue)
                     VStack(spacing: 10) {
-                        ForEach(items) { item in
-                            GlassPanel(padding: 14, radius: 18) {
-                                HStack(spacing: 12) {
-                                    IconTile(symbol: item.symbol, hue: kind == .developer ? .blue : kind == .downloads ? .teal : .orange, size: 36)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.title).font(.headline)
-                                        Text(item.detail).font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Text(bytes(item.size)).font(.system(.body, design: .rounded).weight(.semibold)).monospacedDigit()
-                                    Button("Move to Trash") { model.trash(item) }
-                                        .buttonStyle(.glass)
-                                        .disabled(model.isBusy("cleanup-\(item.id)"))
-                                }
-                            }
-                        }
+                        ForEach(items) { item in row(item, kind: kind) }
                     }
                 }
             }
-            if cleanup.trashSize > 0 {
-                Label("The Trash holds \(bytes(cleanup.trashSize)). Empty it in Finder when you're sure, to get the space back.",
-                      systemImage: "trash")
-                    .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                if cleanup.trashSize > 0 {
+                    Label("The Trash holds \(bytes(cleanup.trashSize)). Empty it in Finder when you're sure, to get the space back.",
+                          systemImage: "trash")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Open Trash") { NSWorkspace.shared.open(model.ctx.paths.trash) }.buttonStyle(.glass)
             }
         }
+        .sheet(item: $showing) { item in CleanupDetail(item: item).environment(model) }
+    }
+
+    func row(_ item: CleanupItem, kind: CleanupItem.Kind) -> some View {
+        let cleanup = model.cleanup
+        return GlassPanel(padding: 14, radius: 18) {
+            HStack(spacing: 12) {
+                if item.safety != .guideOnly {
+                    Toggle("Clear \(item.title)", isOn: Binding(get: { cleanup.selected.contains(item.id) }, set: { on in
+                        if on { cleanup.selected.insert(item.id) } else { cleanup.selected.remove(item.id) }
+                    }))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+                }
+                IconTile(symbol: item.symbol, hue: hue(kind), size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(item.title).font(.headline)
+                        Text(item.safety.label)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(safetyColor(item.safety).opacity(0.18), in: Capsule())
+                            .foregroundStyle(safetyColor(item.safety))
+                    }
+                    Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(bytes(item.size)).font(.system(.body, design: .rounded).weight(.semibold)).monospacedDigit()
+                Button { showing = item } label: { Image(systemName: "info.circle") }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("About \(item.title)")
+            }
+        }
+    }
+
+    func hue(_ kind: CleanupItem.Kind) -> Hue {
+        switch kind {
+        case .developer: .blue
+        case .projects: .indigo
+        case .tools: .purple
+        case .downloads: .teal
+        case .caches: .orange
+        }
+    }
+
+    func safetyColor(_ safety: CleanupItem.Safety) -> Color {
+        switch safety {
+        case .rebuilds: .green
+        case .downloadsAgain: .blue
+        case .yourCall: .orange
+        case .guideOnly: .secondary
+        }
+    }
+}
+
+/// The whole story of one cleanup item.
+struct CleanupDetail: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let item: CleanupItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: item.symbol).font(.title).foregroundStyle(.tint)
+                VStack(alignment: .leading) {
+                    Text(item.title).font(.title2.weight(.semibold))
+                    Text("\(bytes(item.size)) · \(item.safety.label)").foregroundStyle(.secondary)
+                }
+            }
+            Text(item.why.isEmpty ? item.detail : item.why).fixedSize(horizontal: false, vertical: true)
+            if let app = item.appMustBeQuit, model.ctx.readings.runningApps().contains(app) {
+                Label("Its app is open now: quit it first, then clear this.", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+            ForEach(item.urls, id: \.self) { url in
+                HStack {
+                    Text(model.ctx.paths.tilde(url)).font(.callout.monospaced()).lineLimit(1).truncationMode(.middle)
+                    Spacer()
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }.buttonStyle(.glass)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }.buttonStyle(.glassProminent).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
     }
 }
 

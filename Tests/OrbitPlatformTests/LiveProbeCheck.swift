@@ -57,6 +57,16 @@ struct LiveProbeCheck {
     }
 
     /// Which real backups the tidy-up would clear, ignoring age. Only looks: nothing is moved.
+    /// What Cleanup finds on this Mac (it only measures).
+    @Test func cleanupOnThisMac() async {
+        let start = ContinuousClock.now
+        let items = await CleanupScanner(SystemContext.make(mode: .live)).scan(includeDownloads: false)
+        print("PROBE cleanup took \(ContinuousClock.now - start)")
+        for item in items {
+            print("PROBE cleanup: \(ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file))  [\(item.safety.label)\(item.suggested ? ", ticked" : "")]  \(item.title)")
+        }
+    }
+
     /// What the Doctor finds on this Mac (it only reads).
     @Test func doctorOnThisMac() {
         let start = ContinuousClock.now

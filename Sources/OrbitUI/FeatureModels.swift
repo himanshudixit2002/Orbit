@@ -123,10 +123,14 @@ final class CleanupModel {
     var scannedAt: Date?
     var trashSize: Int64 = 0
     var trashed: Set<String> = []
+    /// What "Clear selected" moves: after a scan, everything that comes back by itself.
+    var selected: Set<String> = []
 
     init(ctx: SystemContext) { self.ctx = ctx }
 
-    var total: Int64 { items.filter { !trashed.contains($0.id) }.reduce(0) { $0 + $1.size } }
+    var total: Int64 { items.filter { !trashed.contains($0.id) && $0.safety != .guideOnly }.reduce(0) { $0 + $1.size } }
+    var selectedItems: [CleanupItem] { items.filter { selected.contains($0.id) && !trashed.contains($0.id) } }
+    var selectedSize: Int64 { selectedItems.reduce(0) { $0 + $1.size } }
 
     func scan(includeDownloads: Bool) async {
         scanning = true
@@ -134,6 +138,7 @@ final class CleanupModel {
         items = await scanner.scan(includeDownloads: includeDownloads)
         trashSize = await Task.detached { scanner.trashSize() }.value
         trashed = []
+        selected = Set(items.filter(\.suggested).map(\.id))
         scannedAt = Date()
         scanning = false
     }
@@ -240,10 +245,30 @@ extension AppModel {
 
     // MARK: Cleanup
 
-    func trash(_ item: CleanupItem) {
-        cleanup.trashed.insert(item.id)
+    /// Moves the ticked items to the Trash as one change (one Undo puts them all back).
+    func clearSelected() {
+        let items = cleanup.selectedItems
+        guard !items.isEmpty else { return }
+        let running = ctx.readings.runningApps()
+        let clearable = items.filter { !($0.appMustBeQuit.map(running.contains) ?? false) }
+        cleanup.trashed.formUnion(clearable.map(\.id))
+        cleanup.selected.subtract(clearable.map(\.id))
         let scanner = CleanupScanner(ctx)
-        perform("cleanup-\(item.id)", "Moved \(item.title.lowercased()) to the Trash") { _ in scanner.trash(item) }
+        let title = items.count == 1 ? "Moved \(items[0].title.lowercased()) to the Trash" : "Cleared \(items.count) things (\(bytes(cleanup.selectedSize + clearable.reduce(0) { $0 + $1.size })))"
+        perform("cleanup-selected", title) { _ in scanner.trash(items) }
+    }
+
+    /// At most once a day, when the disk is nearly full and no Orbit window is in front.
+    func checkDiskSpace() {
+        guard !isPractice, !isSnapshot else { return }
+        let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey])
+        guard let free = values?.volumeAvailableCapacityForImportantUsage, let total = values?.volumeTotalCapacity, total > 0,
+              free < 15_000_000_000 || Double(free) / Double(total) < 0.1 else { return }
+        notifier?.send(.lowDisk, key: "low disk", title: "Your Mac is low on space", body: "\(bytes(free)) free. Cleanup can show what can go.",
+                       page: .cleanup, every: 24 * 3600) { [weak self] in
+            self?.openMainWindow()
+            self?.page = .cleanup
+        }
     }
 }
 

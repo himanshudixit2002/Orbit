@@ -167,6 +167,14 @@ public final class AppModel {
 
     func start() async {
         modes.resume()
+        // Low on disk: a notice at most once a day.
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                self?.checkDiskSpace()
+                try? await Task.sleep(for: .seconds(6 * 3600), tolerance: .seconds(600))
+            }
+        }
         // The Doctor looks once Orbit has settled (it reads app bundles and folders).
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(20))
