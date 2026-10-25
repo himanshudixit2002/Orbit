@@ -309,8 +309,35 @@ public struct Actions: Sendable {
                 for side in ["top", "bottom", "left", "right"] {
                     await ctx.run(Commands.yabaiConfig("\(side)_padding", "\(tiling.padding)"))
                 }
+                await ctx.run(Commands.yabaiConfig("window_placement", tiling.newWindowsFirst ? "first_child" : "second_child"))
+                await ctx.run(Commands.yabaiConfig("split_ratio", String(format: "%.2f", tiling.splitRatio)))
+                await ctx.run(Commands.yabaiConfig("auto_balance", tiling.autoBalance ? "on" : "off"))
+                await ctx.run(Commands.yabaiConfig("mouse_follows_focus", tiling.mouseFollowsFocus ? "on" : "off"))
+                await ctx.run(Commands.yabaiConfig("focus_follows_mouse", tiling.focusFollowsMouse.rawValue))
             }
             return "Window arrangement updated."
+        }
+    }
+
+    /// Saves which apps float instead of tiling, and changes the rule while yabai runs: apps added
+    /// float straight away; ones taken out tile from their next window.
+    public func applyFloatingApps(_ apps: [String], policy: WritePolicy = .askIfEdited) async throws -> ActionOutcome {
+        var next = settings
+        next.floatingApps = apps
+        let barOn = await isRunning(.sketchybar)
+        let yabairc = YabaiConfig.render(next, barReserved: barOn ? next.bar.reservedSpace : nil)
+        try checkEdits([.yabairc: yabairc], policy: policy)
+        return await steps { undo in
+            undo += changeSettings { $0.floatingApps = apps }
+            undo += try write(.yabairc, yabairc, executable: true, backups: backupFolder("floating apps"))
+            if await isRunning(.yabai) {
+                let rule = YabaiConfig.floatingRule
+                await ctx.run(Commands.yabaiRule(["--remove", rule], summary: "Take out the floating apps rule"))
+                await ctx.run(Commands.yabaiRule(["--add", "label=\(rule)", "app=\(YabaiConfig.floatingPattern(apps))", "manage=off"],
+                                                 summary: "Float \(apps.count) apps"))
+                await ctx.run(Commands.yabaiRule(["--apply", rule], summary: "Float their open windows"))
+            }
+            return "Floating apps updated."
         }
     }
 

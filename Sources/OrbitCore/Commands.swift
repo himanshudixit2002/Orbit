@@ -158,6 +158,11 @@ public enum Commands {
                 summary: "Ask window tiling which displays it sees", timeout: 3)
     }
 
+    /// Adds, removes or reapplies a yabai rule (`yabai -m rule …`).
+    public static func yabaiRule(_ arguments: [String], summary: String) -> Command {
+        Command(Tool.yabai, ["-m", "rule"] + arguments, effect: .service, summary: summary, timeout: 5, okStatuses: [0, 1])
+    }
+
     public static func yabaiConfig(_ key: String, _ value: String) -> Command {
         Command(Tool.yabai, ["-m", "config", key, value], effect: .service,
                 summary: "Set window tiling's \(key) to \(value)", timeout: 3)

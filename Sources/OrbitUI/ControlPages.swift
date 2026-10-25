@@ -69,7 +69,15 @@ struct TilingControls: View {
                 }
                 .frame(width: 300)
             }
+            DisclosureGroup("More options") {
+                TilingMoreOptions(tiling: $tiling) { model.applyTiling(tiling) }
+                    .padding(.top, 8)
+            }
         }
+        .onChange(of: tiling.newWindowsFirst) { if loaded, tiling != model.settings.tiling { model.applyTiling(tiling) } }
+        .onChange(of: tiling.autoBalance) { if loaded, tiling != model.settings.tiling { model.applyTiling(tiling) } }
+        .onChange(of: tiling.focusFollowsMouse) { if loaded, tiling != model.settings.tiling { model.applyTiling(tiling) } }
+        .onChange(of: tiling.mouseFollowsFocus) { if loaded, tiling != model.settings.tiling { model.applyTiling(tiling) } }
         .onAppear {
             tiling = model.settings.tiling
             DispatchQueue.main.async { loaded = true }
@@ -78,6 +86,75 @@ struct TilingControls: View {
         .onChange(of: model.settings.tiling) { _, saved in
             if !model.isBusy("tilingSettings"), tiling != saved { tiling = saved }
         }
+    }
+}
+
+/// Tiling's finer points: where new windows go, how splits share, and what the pointer does.
+struct TilingMoreOptions: View {
+    @Binding var tiling: TilingSettings
+    let apply: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingRow(title: "New windows open", detail: placementDetail) {
+                Picker("New windows", selection: $tiling.newWindowsFirst) {
+                    Text("Left").tag(true)
+                    Text("Right").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 160)
+            }
+            SettingRow(title: "First window's share", detail: "\(Int((tiling.splitRatio * 100).rounded()))% of a split") {
+                Slider(value: $tiling.splitRatio, in: 0.3...0.7, step: 0.05) { editing in
+                    if !editing { apply() }
+                }
+                .frame(width: 300)
+            }
+            SettingRow(title: "Keep windows the same size", detail: "Every window gets an equal share") {
+                Toggle("Balance", isOn: $tiling.autoBalance).toggleStyle(.switch).labelsHidden()
+            }
+            SettingRow(title: "Pointing at a window", detail: focusDetail) {
+                Picker("Focus", selection: $tiling.focusFollowsMouse) {
+                    ForEach(FocusFollowsMouse.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 220)
+            }
+            SettingRow(title: "Pointer follows the keyboard", detail: "Moving between windows with ⌥ H J K L moves the pointer too") {
+                Toggle("Pointer follows", isOn: $tiling.mouseFollowsFocus).toggleStyle(.switch).labelsHidden()
+            }
+            FloatingAppsEditor()
+        }
+    }
+
+    var placementDetail: String {
+        tiling.newWindowsFirst ? "On the left of (or above) the window they split" : "On the right of (or below) the window they split"
+    }
+
+    var focusDetail: String {
+        tiling.focusFollowsMouse == .off ? "Click a window to use it" : "The window under the pointer becomes the active one"
+    }
+}
+
+/// The apps whose windows float instead of tiling.
+struct FloatingAppsEditor: View {
+    @Environment(AppModel.self) private var model
+    @State private var apps: [String] = []
+    @State private var loaded = false
+
+    var body: some View {
+        AppChips(title: "Apps that float", subtitle: "Their windows stay where you put them instead of tiling.",
+                 apps: $apps, installed: model.appCatalog.apps)
+            .onAppear {
+                apps = model.settings.floatingApps
+                model.appCatalog.refresh()
+                DispatchQueue.main.async { loaded = true }
+            }
+            .onChange(of: apps) { if loaded, apps != model.settings.floatingApps { model.applyFloatingApps(apps) } }
+            .onChange(of: model.settings.floatingApps) { _, saved in
+                if !model.isBusy("floatingApps"), apps != saved { apps = saved }
+            }
     }
 }
 
@@ -113,12 +190,24 @@ struct GlowControls: View {
                 }
                 .frame(width: 300)
             }
+            SettingRow(title: "Corners", detail: glow.style == .round ? "Rounded, like the windows" : "Square") {
+                Picker("Corners", selection: $glow.style) {
+                    Text("Round").tag(BorderStyle.round)
+                    Text("Square").tag(BorderStyle.square)
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 160)
+            }
+            AppChips(title: "Apps without a glow", subtitle: "Their windows get no outline (pop-up helpers, launchers).",
+                     apps: $glow.ignoredApps, installed: model.appCatalog.apps)
         }
+        .onChange(of: glow.style) { if loaded, glow != model.settings.glow { model.applyGlow(glow) } }
+        .onChange(of: glow.ignoredApps) { if loaded, glow != model.settings.glow { model.applyGlow(glow) } }
         .onChange(of: glow.useThemeColor) { if loaded, glow != model.settings.glow { model.applyGlow(glow) } }
         .onChange(of: glow.glow) { if loaded, glow != model.settings.glow { model.applyGlow(glow) } }
         .onChange(of: glow.customColor) { if loaded, !glow.useThemeColor, glow != model.settings.glow { model.applyGlow(glow) } }
         .onAppear {
             glow = model.settings.glow
+            model.appCatalog.refresh()
             DispatchQueue.main.async { loaded = true }
         }
         .onChange(of: model.settings.glow) { _, saved in
@@ -158,6 +247,14 @@ struct MenuBarPage: View {
                             .buttonStyle(.glass)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                    }
+                    SettingRow(title: "Height", detail: "\(bar.height) points") {
+                        Slider(value: Binding(get: { Double(bar.height) }, set: { bar.height = Int($0) }), in: 26...44, step: 2)
+                            .frame(width: 260)
+                    }
+                    SettingRow(title: "Gap above it", detail: "\(bar.yOffset) points from the top of the screen") {
+                        Slider(value: Binding(get: { Double(bar.yOffset) }, set: { bar.yOffset = Int($0) }), in: 0...14, step: 1)
+                            .frame(width: 260)
                     }
                     Label("Tip: click the Apple logo in the bar to open Orbit's quick panel.", systemImage: "lightbulb.fill")
                         .font(.callout).foregroundStyle(.secondary).padding(.top, 4)
@@ -224,24 +321,30 @@ struct KeyboardPage: View {
                     }
                     Divider()
                     Text("Hold Caps Lock and press…").font(.headline)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 10)], spacing: 8) {
+                    VStack(spacing: 6) {
                         ForEach($keyboard.hyperApps) { $binding in
-                            HStack(spacing: 10) {
-                                KeyCap(text: binding.key.uppercased())
-                                Image(systemName: "arrow.right").foregroundStyle(.tertiary)
-                                Picker("App", selection: Binding(get: { binding.appPath }, set: { path in
-                                    binding.appPath = path
-                                    binding.appName = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-                                    binding.bundleID = nil
-                                    model.applyKeyboard(keyboard)
-                                })) {
-                                    ForEach(appChoices(including: binding), id: \.path) { app in
-                                        Text(app.name).tag(app.path)
-                                    }
-                                }
-                                .labelsHidden()
+                            HyperKeyRow(binding: $binding, freeKeys: freeKeys(keeping: binding.key), apps: appChoices(including: binding),
+                                        modes: model.settings.modes, save: { model.applyKeyboard(keyboard) }) {
+                                keyboard.hyperApps.removeAll { $0.key == binding.key }
+                                model.applyKeyboard(keyboard)
                             }
                         }
+                    }
+                    HStack {
+                        Button {
+                            guard let key = freeKeys(keeping: nil).first else { return }
+                            keyboard.hyperApps.append(HyperBinding(key: key, appName: "Finder", appPath: "/System/Library/CoreServices/Finder.app"))
+                            model.applyKeyboard(keyboard)
+                        } label: { Label("Add a key", systemImage: "plus") }
+                            .buttonStyle(.glass)
+                            .disabled(freeKeys(keeping: nil).isEmpty)
+                        Spacer()
+                    }
+                    SettingRow(title: "Tap for Escape", detail: "A tap shorter than \(keyboard.tapTimeout) ms is Escape; hold longer for Hyper.") {
+                        Slider(value: Binding(get: { Double(keyboard.tapTimeout) }, set: { keyboard.tapTimeout = Int($0) }), in: 150...500, step: 25) { editing in
+                            if !editing { model.applyKeyboard(keyboard) }
+                        }
+                        .frame(width: 260)
                     }
                 }
             }
@@ -278,9 +381,145 @@ struct KeyboardPage: View {
         }
     }
 
+    /// Letters and digits no other key uses (and this one's own).
+    func freeKeys(keeping key: String?) -> [String] {
+        let used = Set(keyboard.hyperApps.map(\.key)).subtracting([key].compactMap { $0 })
+        return HyperBinding.keys.filter { !used.contains($0) }
+    }
+
     func appChoices(including binding: HyperBinding) -> [InstalledApp] {
         let apps = model.appCatalog.apps
         return apps.contains { $0.path == binding.appPath } ? apps : [InstalledApp(name: binding.appName, path: binding.appPath)] + apps
+    }
+}
+
+/// One Caps Lock key: which key, what it does, and what with.
+struct HyperKeyRow: View {
+    enum Kind: String, CaseIterable {
+        case app = "App", website = "Website", folder = "Folder", orbit = "Orbit"
+    }
+
+    @Binding var binding: HyperBinding
+    let freeKeys: [String]
+    let apps: [InstalledApp]
+    let modes: [ModeDefinition]
+    let save: () -> Void
+    let remove: () -> Void
+    @State private var website = ""
+
+    var kind: Kind {
+        switch binding.action {
+        case .app: .app
+        case .website: .website
+        case .folder: .folder
+        case .orbit: .orbit
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Menu {
+                ForEach(freeKeys, id: \.self) { key in
+                    Button(key.uppercased()) {
+                        binding.key = key
+                        save()
+                    }
+                }
+            } label: { KeyCap(text: binding.key.uppercased()) }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .fixedSize()
+                .accessibilityLabel("Key \(binding.key.uppercased())")
+            Image(systemName: "arrow.right").foregroundStyle(.tertiary)
+            Picker("Does", selection: Binding(get: { kind }, set: change)) {
+                ForEach(Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
+            .frame(width: 100)
+            detail
+            Spacer(minLength: 4)
+            Button(action: remove) { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove Caps Lock + \(binding.key.uppercased())")
+        }
+        .onAppear { if case .website(let url) = binding.action { website = url } }
+    }
+
+    @ViewBuilder
+    var detail: some View {
+        switch binding.action {
+        case .app:
+            Picker("App", selection: Binding(get: { binding.appPath }, set: { path in
+                binding.appPath = path
+                binding.appName = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+                binding.bundleID = nil
+                save()
+            })) {
+                ForEach(apps, id: \.path) { Text($0.name).tag($0.path) }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+        case .website:
+            TextField("https://…", text: $website)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 240)
+                .onSubmit {
+                    let trimmed = website.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty else { return }
+                    website = trimmed.contains("://") ? trimmed : "https://" + trimmed
+                    binding.action = .website(website)
+                    save()
+                }
+        case .folder(let path):
+            Button(path.isEmpty ? "Choose a folder…" : URL(fileURLWithPath: path).lastPathComponent) { chooseFolder() }
+                .buttonStyle(.glass)
+            Text("in \(binding.appName.isEmpty ? "Finder" : binding.appName)").font(.caption).foregroundStyle(.secondary)
+        case .orbit(let command):
+            Picker("Orbit", selection: Binding(get: { command }, set: { binding.action = .orbit($0); save() })) {
+                ForEach(orbitChoices, id: \.1) { Text($0.0).tag($0.1) }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+        }
+    }
+
+    /// Switching what a key does: an Orbit action works at once; a website or folder waits to be given.
+    func change(_ kind: Kind) {
+        switch kind {
+        case .app:
+            binding.action = .app
+            if binding.appPath.isEmpty {
+                binding.appName = "Finder"
+                binding.appPath = "/System/Library/CoreServices/Finder.app"
+            }
+            save()
+        case .website:
+            binding.action = .website(website)
+        case .folder:
+            binding.action = .folder("")
+            chooseFolder()
+        case .orbit:
+            binding.action = .orbit(.open(.palette))
+            save()
+        }
+    }
+
+    func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Developer")
+        panel.prompt = "Use This Folder"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        binding.action = .folder(url.path(percentEncoded: false))
+        save()
+    }
+
+    var orbitChoices: [(String, OrbitCommand)] {
+        [("Command palette", .open(.palette)), ("Open Orbit", .open(.page(.home))), ("Window tiling on or off", .toggleFeature(.tiling)),
+         ("Glow on or off", .toggleFeature(.glow)), ("Menu bar on or off", .toggleFeature(.menuBar)), ("Sort Downloads", .sortDownloads),
+         ("Check everything", .checkStatus), ("Stop the mode", .stopMode)]
+            + modes.map { ("\($0.name) mode on or off", OrbitCommand.toggleMode($0.id)) }
     }
 }
 

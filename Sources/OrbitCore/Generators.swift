@@ -2,6 +2,14 @@ import Foundation
 
 /// yabai's config file: window tiling.
 public enum YabaiConfig {
+    /// The rule that floats small utility apps, by name, so Orbit can change it while yabai runs.
+    public static let floatingRule = "orbit-floating"
+
+    /// The floating rule's `app=` pattern.
+    public static func floatingPattern(_ apps: [String]) -> String {
+        "^(" + apps.map(Shell.regexEscape).joined(separator: "|") + ")$"
+    }
+
     /// - Parameter barReserved: room to keep free at the top for SketchyBar, or nil when the bar is off.
     public static func render(_ settings: OrbitSettings, barReserved: Int?) -> String {
         func config(_ key: String, _ value: String) -> String {
@@ -20,9 +28,9 @@ public enum YabaiConfig {
         # Runs without disabling SIP, so it sticks to features that need no scripting addition.
 
         \(config("layout", tiling.layout.rawValue))
-        \(config("window_placement", "second_child"))
-        \(config("split_ratio", "0.50"))
-        \(config("auto_balance", "off"))
+        \(config("window_placement", tiling.newWindowsFirst ? "first_child" : "second_child"))
+        \(config("split_ratio", String(format: "%.2f", tiling.splitRatio)))
+        \(config("auto_balance", tiling.autoBalance ? "on" : "off"))
 
         \(bar)
 
@@ -38,11 +46,11 @@ public enum YabaiConfig {
         \(config("mouse_action1", "move"))
         \(config("mouse_action2", "resize"))
         \(config("mouse_drop_action", "swap"))
-        \(config("mouse_follows_focus", "off"))
-        \(config("focus_follows_mouse", "off"))
+        \(config("mouse_follows_focus", tiling.mouseFollowsFocus ? "on" : "off"))
+        \(config("focus_follows_mouse", tiling.focusFollowsMouse.rawValue))
 
         # Small utility windows float instead of tiling
-        yabai -m rule --add app="^(\(floating))$" manage=off
+        yabai -m rule --add label=\(floatingRule) app="^(\(floating))$" manage=off
         yabai -m rule --add app="^Finder$" title="^(Copy|Move|Connect|Info|Preferences|Settings).*" manage=off
         yabai -m rule --add title="^(Preferences|Settings|Open|Save)$" manage=off
         yabai -m rule --apply

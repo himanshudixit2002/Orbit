@@ -81,10 +81,33 @@ public enum TilingLayout: String, Codable, CaseIterable, Sendable, Identifiable 
     }
 }
 
+/// Whether pointing at a window focuses it.
+public enum FocusFollowsMouse: String, Codable, CaseIterable, Sendable, Identifiable {
+    case off, autofocus, autoraise
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .off: "Click to focus"
+        case .autofocus: "Point to focus"
+        case .autoraise: "Point to focus and raise"
+        }
+    }
+}
+
 public struct TilingSettings: Codable, Sendable, Equatable {
     public var layout: TilingLayout = .tiles
     public var gap = 10
     public var padding = 12
+    /// New windows open on the left (or top) of the one they split, instead of the right.
+    public var newWindowsFirst = false
+    /// How much of a split the first window gets.
+    public var splitRatio = 0.5
+    /// Keep every window the same size.
+    public var autoBalance = false
+    public var mouseFollowsFocus = false
+    public var focusFollowsMouse: FocusFollowsMouse = .off
 
     public init() {}
 }
@@ -124,16 +147,29 @@ public struct BarSettings: Codable, Sendable, Equatable {
     public var reservedSpace: Int { height + yOffset }
 }
 
-/// "Hold Caps Lock + key opens app."
+/// What holding Caps Lock and a key does.
+public enum HyperAction: Codable, Sendable, Hashable {
+    /// Opens the binding's app.
+    case app
+    /// Opens a website in the default browser.
+    case website(String)
+    /// Opens a folder (a project, say) in the binding's app, or in Finder when it has none.
+    case folder(String)
+    /// Does something in Orbit.
+    case orbit(OrbitCommand)
+}
+
+/// "Hold Caps Lock + key opens app" (or a website, a project folder, or something in Orbit).
 public struct HyperBinding: Codable, Sendable, Equatable, Hashable, Identifiable {
     public var key: String
     public var appName: String
     public var appPath: String
     public var bundleID: String?
+    public var action: HyperAction = .app
 
     public var id: String { key }
 
-    private enum CodingKeys: String, CodingKey { case key, appName, appPath, bundleID }
+    private enum CodingKeys: String, CodingKey { case key, appName, appPath, bundleID, action }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -141,7 +177,21 @@ public struct HyperBinding: Codable, Sendable, Equatable, Hashable, Identifiable
         appName = c.value(.appName, or: "")
         appPath = c.value(.appPath, or: "")
         bundleID = c.value(.bundleID, or: nil)
+        action = c.value(.action, or: .app)
     }
+
+    /// What it does, short: "Warp", "github.com", "Orbit", "turn on window tiling".
+    public var label: String {
+        switch action {
+        case .app: appName
+        case .website(let url): URL(string: url)?.host() ?? url
+        case .folder(let path): URL(fileURLWithPath: path).lastPathComponent
+        case .orbit(let command): command.summary
+        }
+    }
+
+    /// Keys Caps Lock can be held with.
+    public static let keys = Array("abcdefghijklmnopqrstuvwxyz0123456789").map(String.init)
 
     public init(key: String, appName: String, appPath: String, bundleID: String? = nil) {
         self.key = key
@@ -169,6 +219,8 @@ public struct HyperBinding: Codable, Sendable, Equatable, Hashable, Identifiable
 public struct KeyboardSettings: Codable, Sendable, Equatable {
     public var capsLockEnabled = true
     public var hyperApps = HyperBinding.defaults
+    /// A tap shorter than this (milliseconds) is Escape; holding longer is Hyper.
+    public var tapTimeout = 300
 
     public init() {}
 }

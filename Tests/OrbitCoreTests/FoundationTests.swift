@@ -110,3 +110,53 @@ import Testing
         #expect(OrbitCommand.setFeature(.menuBar, on: false).summary == "turn off the new menu bar")
     }
 }
+
+@Suite struct HyperActionTests {
+    func binding(_ action: HyperAction, app: String = "", path: String = "", id: String? = nil) -> HyperBinding {
+        var binding = HyperBinding(key: "k", appName: app, appPath: path, bundleID: id)
+        binding.action = action
+        return binding
+    }
+
+    @Test func eachKindOfKeyRunsTheRightCommand() {
+        #expect(KarabinerConfig.launchCommand(binding(.app, app: "Warp", id: "dev.warp.Warp-Stable")) == "open -b dev.warp.Warp-Stable")
+        #expect(KarabinerConfig.launchCommand(binding(.website("https://github.com/notifications"))) == "open https://github.com/notifications")
+        #expect(KarabinerConfig.launchCommand(binding(.folder("/Users/me/Developer/Orbit"), app: "Antigravity IDE", id: "com.google.antigravity-ide"))
+                == "open -b com.google.antigravity-ide /Users/me/Developer/Orbit")
+        #expect(KarabinerConfig.launchCommand(binding(.folder("/tmp/My Project"))) == "open '/tmp/My Project'")
+        let toggle = KarabinerConfig.launchCommand(binding(.orbit(.toggleFeature(.tiling)))) { OrbitLink.url(for: $0, token: "t0k")?.absoluteString }
+        #expect(toggle == "open -g 'orbit://toggle/tiling?token=t0k'")
+        #expect(binding(.orbit(.toggleFeature(.tiling))).label == "switch window tiling on or off")
+        #expect(binding(.website("https://github.com/x")).label == "github.com")
+    }
+
+    @Test func theTapTimeoutIsWrittenAndOldKeysStillLoad() throws {
+        var settings = KeyboardSettings()
+        settings.tapTimeout = 225
+        let data = try KarabinerConfig.patched(nil, settings: settings)
+        let root = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let profile = try #require((root["profiles"] as? [[String: Any]])?.first)
+        let parameters = (profile["complex_modifications"] as? [String: Any])?["parameters"] as? [String: Any]
+        #expect(parameters?["basic.to_if_alone_timeout_milliseconds"] as? Int == 225)
+        let old = #"{"key": "t", "appName": "Warp", "appPath": "/Applications/Warp.app"}"#
+        #expect(try JSONDecoder().decode(HyperBinding.self, from: Data(old.utf8)).action == .app)
+        let round = try JSONDecoder().decode(HyperBinding.self, from: JSONEncoder().encode(binding(.orbit(.stopMode))))
+        #expect(round.action == .orbit(.stopMode))
+    }
+
+    @Test func tilingOptionsReachTheConfigAndDefaultsStayTheSame() {
+        var settings = OrbitSettings()
+        let plain = YabaiConfig.render(settings, barReserved: nil)
+        #expect(plain.contains("window_placement      second_child") && plain.contains("split_ratio           0.50"))
+        settings.tiling.newWindowsFirst = true
+        settings.tiling.splitRatio = 0.6
+        settings.tiling.autoBalance = true
+        settings.tiling.focusFollowsMouse = .autofocus
+        let text = YabaiConfig.render(settings, barReserved: nil)
+        #expect(text.contains("window_placement      first_child"))
+        #expect(text.contains("split_ratio           0.60"))
+        #expect(text.contains("auto_balance          on"))
+        #expect(text.contains("focus_follows_mouse   autofocus"))
+        #expect(YabaiConfig.floatingPattern(["Calculator", "C++ (beta)"]) == #"^(Calculator|C\+\+ \(beta\))$"#)
+    }
+}

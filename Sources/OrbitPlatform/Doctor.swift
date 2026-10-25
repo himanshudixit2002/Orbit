@@ -18,7 +18,9 @@ public struct DoctorProbe: Sendable {
         let settings = ctx.store.settings
         var facts = DoctorFacts()
         facts.capsLockOn = settings.keyboard.capsLockEnabled
-        facts.missingHyperApps = settings.keyboard.hyperApps.filter { !$0.appPath.isEmpty && !ctx.readings.installed($0.appPath) }
+        facts.missingHyperApps = settings.keyboard.hyperApps.filter {
+            $0.action == .app && !$0.appPath.isEmpty && !ctx.readings.installed($0.appPath)
+        }
         facts.apps = applicationCopies()
         let agents = launchAgents()
         facts.launchAgents = agents.map(\.agent)

@@ -7,7 +7,7 @@ extension Actions {
     public func resolved(_ bindings: [HyperBinding]) -> [HyperBinding] {
         bindings.map { binding in
             var b = binding
-            if b.bundleID == nil, let bundle = Bundle(path: b.appPath) { b.bundleID = bundle.bundleIdentifier }
+            if b.bundleID == nil, !b.appPath.isEmpty, let bundle = Bundle(path: b.appPath) { b.bundleID = bundle.bundleIdentifier }
             return b
         }
     }
@@ -16,7 +16,11 @@ extension Actions {
         var settled = keyboard
         settled.hyperApps = resolved(keyboard.hyperApps)
         let current = ctx.files.read(paths.karabinerJSON)
-        let patched = try KarabinerConfig.patched(current, settings: settled)
+        let scheme = ctx.mode == .practice ? "orbitdev" : "orbit"
+        let token = ctx.store.linkToken
+        let patched = try KarabinerConfig.patched(current, settings: settled) {
+            OrbitLink.url(for: $0, scheme: scheme, token: token)?.absoluteString
+        }
         let backups = backupFolder("keyboard")
         return await steps { undo in
             undo += changeSettings { $0.keyboard = settled }

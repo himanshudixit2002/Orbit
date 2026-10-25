@@ -533,6 +533,11 @@ public final class AppModel {
 
     func setGlow(_ on: Bool) { setFeature(.glow, on: on) }
 
+    func applyFloatingApps(_ apps: [String]) {
+        settings.floatingApps = apps
+        perform("floatingApps", "Changed which apps float") { [actions] in try await actions.applyFloatingApps(apps, policy: $0) }
+    }
+
     func applyGlow(_ glow: GlowSettings) {
         settings.glow = glow
         perform("glowSettings", "Changed the window glow") { [actions] in

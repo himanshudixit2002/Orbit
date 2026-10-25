@@ -24,7 +24,8 @@ func lines(_ text: String, starting prefix: String) -> [String] {
     @Test func floatingAppsKeepTheOldListAndAddOrbit() throws {
         let before = try fixture("yabairc")
         func floating(_ text: String) -> Set<String> {
-            guard let line = lines(text, starting: "yabai -m rule --add app=\"^(").first,
+            // Before Orbit the rule had no label; Orbit names it so it can change it live.
+            guard let line = lines(text, starting: "yabai -m rule --add").first(where: { $0.contains("app=\"^(") }),
                   let open = line.range(of: "^("), let close = line.range(of: ")$") else { return [] }
             return Set(line[open.upperBound..<close.lowerBound].split(separator: "|").map(String.init))
         }
@@ -202,8 +203,8 @@ extension KeyboardSettings {
         var settings = OrbitSettings()
         settings.floatingApps = [tricky]
         let rc = YabaiConfig.render(settings, barReserved: nil)
-        let rule = try #require(rc.split(separator: "\n").first { $0.hasPrefix("yabai -m rule --add app=\"^(") })
-        let argument = String(rule.dropFirst("yabai -m rule --add ".count))
+        let rule = try #require(rc.split(separator: "\n").first { $0.hasPrefix("yabai -m rule --add label=orbit-floating app=\"^(") })
+        let argument = String(rule.dropFirst("yabai -m rule --add label=orbit-floating ".count))
         #expect(try firstWord(argument) == "app=^(" + Shell.regexEscape(tricky) + ")$")
     }
 

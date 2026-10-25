@@ -93,3 +93,21 @@ import Testing
         #expect(!system.commands.contains { FakeSystem.name($0) == "yabai" && $0.arguments.contains("external_bar") })
     }
 }
+
+@Suite struct FloatingAppsTests {
+    @Test func floatingAppsChangeLiveAndUndoPutsThemBack() async throws {
+        let system = FakeSystem()
+        system.load(Helper.yabai.label)
+        let ctx = try sandboxContext(system)
+        let actions = Actions(ctx)
+        let before = ctx.store.settings.floatingApps
+        let outcome = try await actions.applyFloatingApps(before + ["Preview"])
+        #expect(outcome.ok)
+        #expect(system.ran("yabai", "-m", "rule", "--remove", "orbit-floating"))
+        #expect(system.commands.contains { $0.arguments.contains("label=orbit-floating") && $0.arguments.last == "manage=off" })
+        #expect(system.ran("yabai", "-m", "rule", "--apply", "orbit-floating"))
+        #expect(try String(contentsOf: ctx.paths.yabairc, encoding: .utf8).contains("|Preview)$"))
+        _ = await actions.undo(outcome.undo)
+        #expect(ctx.store.settings.floatingApps == before)
+    }
+}

@@ -19,13 +19,22 @@ public enum KarabinerConfig {
         return description.hasPrefix(marker) || legacyDescriptions.contains(description)
     }
 
-    /// The shell command a binding runs: by bundle id when known, so it survives app renames.
-    public static func launchCommand(_ binding: HyperBinding) -> String {
-        if let id = binding.bundleID, !id.isEmpty { return "open -b \(Shell.quote(id))" }
-        return "open -a \(Shell.quote(binding.appName))"
+    /// The shell command a binding runs. Apps open by bundle id when known, so they survive renames;
+    /// Orbit commands go through a link carrying this Mac's token (`link`), without bringing Orbit forward.
+    public static func launchCommand(_ binding: HyperBinding, link: (OrbitCommand) -> String? = { _ in nil }) -> String {
+        func app() -> String? {
+            if let id = binding.bundleID, !id.isEmpty { return "-b \(Shell.quote(id))" }
+            return binding.appName.isEmpty ? nil : "-a \(Shell.quote(binding.appName))"
+        }
+        switch binding.action {
+        case .app: return "open \(app() ?? "-a Finder")"
+        case .website(let url): return "open \(Shell.quote(url))"
+        case .folder(let path): return "open \(app().map { $0 + " " } ?? "")\(Shell.quote(path))"
+        case .orbit(let command): return link(command).map { "open -g \(Shell.quote($0))" } ?? "true"
+        }
     }
 
-    static func rules(_ settings: KeyboardSettings) -> [[String: Any]] {
+    static func rules(_ settings: KeyboardSettings, link: (OrbitCommand) -> String? = { _ in nil }) -> [[String: Any]] {
         guard settings.capsLockEnabled else { return [] }
         let capsLock: [String: Any] = [
             "description": capsLockDescription,
@@ -41,7 +50,7 @@ public enum KarabinerConfig {
             "manipulators": settings.hyperApps.map { binding -> [String: Any] in [
                 "type": "basic",
                 "from": ["key_code": binding.key, "modifiers": ["mandatory": hyper]],
-                "to": [["shell_command": launchCommand(binding)]]
+                "to": [["shell_command": launchCommand(binding, link: link)]]
             ]}
         ]
         return [capsLock, apps]
@@ -55,7 +64,7 @@ public enum KarabinerConfig {
 
     /// Returns `existing` with Orbit's rules replaced by ones built from `settings`.
     /// With no existing file, writes a minimal config Karabiner accepts; a file that isn't JSON is refused.
-    public static func patched(_ existing: Data?, settings: KeyboardSettings) throws -> Data {
+    public static func patched(_ existing: Data?, settings: KeyboardSettings, link: (OrbitCommand) -> String? = { _ in nil }) throws -> Data {
         var root: [String: Any] = [:]
         if let existing, !existing.isEmpty {
             guard let parsed = try? JSONSerialization.jsonObject(with: existing) as? [String: Any] else { throw Unreadable() }
@@ -69,12 +78,10 @@ public enum KarabinerConfig {
         var profile = profiles[index]
         var complex = profile["complex_modifications"] as? [String: Any] ?? [:]
         var parameters = complex["parameters"] as? [String: Any] ?? [:]
-        if parameters["basic.to_if_alone_timeout_milliseconds"] == nil {
-            parameters["basic.to_if_alone_timeout_milliseconds"] = 300
-        }
+        parameters["basic.to_if_alone_timeout_milliseconds"] = settings.tapTimeout
         complex["parameters"] = parameters
         let kept = (complex["rules"] as? [Any] ?? []).filter { !isOrbitRule($0) }
-        complex["rules"] = rules(settings) + kept
+        complex["rules"] = rules(settings, link: link) + kept
         profile["complex_modifications"] = complex
         profiles[index] = profile
         root["profiles"] = profiles

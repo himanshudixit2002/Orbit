@@ -23,7 +23,7 @@ public enum CheatSheet {
         if capsLock {
             lines.append(row("CAPS LOCK", "tap", "Escape"))
             // Three to a row, in the order the user keeps them.
-            let cells = bindings.map { column("\($0.key.uppercased()) \(short($0.appName))", 13) }
+            let cells = bindings.map { column("\($0.key.uppercased()) \(short($0.label))", 13) }
             for (index, start) in stride(from: 0, to: cells.count, by: 3).enumerated() {
                 let three = cells[start..<min(start + 3, cells.count)].joined()
                 lines.append(index == 0 ? row("HYPER", "hold Caps Lock + …", three) : row("", "", three))

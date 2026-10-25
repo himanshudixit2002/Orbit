@@ -259,6 +259,15 @@ struct DockFinderPage: View {
                         }
                         .frame(width: 260)
                     }
+                    SettingRow(title: "Delay before repeating", detail: "\(Int(values.initialRepeat) * 15) ms before a held key starts repeating. Applies after you log out and back in.") {
+                        Slider(value: $values.initialRepeat, in: 15...120, step: 5) { editing in
+                            if !editing {
+                                model.setPreferences("Changed the key repeat delay",
+                                                     [.init(WatchedPreferences.globalDomain, "InitialKeyRepeat", .int(Int(values.initialRepeat)))])
+                            }
+                        }
+                        .frame(width: 260)
+                    }
                 }
             }
 
