@@ -23,7 +23,20 @@ extension AppModel {
         let now = Date()
         if let last = lastLink, last.url == url, now.timeIntervalSince(last.at) < 1 { return }
         lastLink = (url, now)
+        // A link without Orbit's own token (from a web page, say) asks before it changes anything.
+        if !command.showsOrbit, OrbitLink.token(in: url) != ctx.store.linkToken, !confirmLink(command) { return }
         Task { await run(command, source: .link) }
+    }
+
+    /// Asks whether a link from outside Orbit may go ahead.
+    static func askAboutLink(_ command: OrbitCommand) -> Bool {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "Let a link \(command.summary)?"
+        alert.informativeText = "A link asked Orbit to \(command.summary). The links on Orbit's Shortcuts page don't ask; links from anywhere else do, in case they're not yours."
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Don't Allow")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// Opens (or brings forward) the main window, with Orbit's Dock icon while it's open. Asked before

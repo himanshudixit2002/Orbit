@@ -67,7 +67,7 @@ struct ShortcutsPage: View {
             SectionTitle(text: "Links")
             GlassPanel {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Use these from Raycast, scripts or other apps. A change made by a link shows a notification with Undo.")
+                    Text("Use these from Raycast, scripts or other apps. They carry this Mac's own key; a link without it asks first. A change made by a link shows a notification with Undo.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     ForEach(links, id: \.link) { item in
@@ -110,7 +110,10 @@ struct ShortcutsPage: View {
             (.sortDownloads, "sort Downloads"), (.checkStatus, "check everything"), (.open(.palette), "command palette"),
             (.open(.page(.monitor)), "open Monitor")
         ]
-        return examples.compactMap { command, does in OrbitLink.url(for: command, scheme: scheme).map { ($0.absoluteString, does) } }
+        let token = model.ctx.store.linkToken
+        return examples.compactMap { command, does in
+            OrbitLink.url(for: command, scheme: scheme, token: token).map { ($0.absoluteString, does) }
+        }
     }
 }
 

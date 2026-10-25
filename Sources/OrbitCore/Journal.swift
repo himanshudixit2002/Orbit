@@ -54,6 +54,9 @@ public enum UndoAction: Codable, Sendable, Equatable {
     case restoreSettings(SettingsUndo)
     /// Open an app at login again, or stop opening it.
     case loginItem(name: String, path: String, wasOn: Bool)
+    /// Put back keys Orbit set in another app's JSON settings file: the values they had, and which
+    /// ones weren't there (those are taken out again). Nothing else in the file is touched.
+    case restoreJSONKeys(path: String, values: [String: JSONValue], absent: [String])
 
     /// What this step puts back, so two changes that touched the same thing can be found.
     public var targets: [String] {
@@ -65,54 +68,55 @@ public enum UndoAction: Codable, Sendable, Equatable {
         case .gitConfig(let key, _): ["git \(key)"]
         case .restoreSettings(let settings): settings.changedFields.map { "setting \($0)" }
         case .loginItem(let name, _, _): ["login item \(name)"]
+        case .restoreJSONKeys(let path, let values, let absent): (values.keys.sorted() + absent).map { "file \(path) key \($0)" }
         }
     }
 }
 
 /// The Orbit settings one change altered, as they were before it. Only those are put back, so
-/// anything changed since by other means (say, an edited mode) stays.
+/// anything changed since by other means (say, an edited mode) stays. Each top-level setting is kept as
+/// JSON, so every setting, now and later, can be put back.
 public struct SettingsUndo: Codable, Sendable, Equatable {
-    public var theme: ThemeID?
-    public var themeTmux: Bool?
-    public var wallpaperFollowsTheme: Bool?
-    public var tiling: TilingSettings?
-    public var floatingApps: [String]?
-    public var glow: GlowSettings?
-    public var bar: BarSettings?
-    public var keyboard: KeyboardSettings?
+    public var before: [String: JSONValue]
 
     public init(before: OrbitSettings, after: OrbitSettings) {
-        if before.theme != after.theme { theme = before.theme }
-        if before.themeTmux != after.themeTmux { themeTmux = before.themeTmux }
-        if before.wallpaperFollowsTheme != after.wallpaperFollowsTheme { wallpaperFollowsTheme = before.wallpaperFollowsTheme }
-        if before.tiling != after.tiling { tiling = before.tiling }
-        if before.floatingApps != after.floatingApps { floatingApps = before.floatingApps }
-        if before.glow != after.glow { glow = before.glow }
-        if before.bar != after.bar { bar = before.bar }
-        if before.keyboard != after.keyboard { keyboard = before.keyboard }
+        let old = (try? JSONValue(encoding: before))?.objectValue ?? [:]
+        let new = (try? JSONValue(encoding: after))?.objectValue ?? [:]
+        self.before = [:]
+        for key in Set(old.keys).union(new.keys) where old[key] != new[key] {
+            self.before[key] = old[key] ?? .null
+        }
     }
 
     /// The settings this puts back, by name.
-    public var changedFields: [String] {
-        [("theme", theme != nil), ("themeTmux", themeTmux != nil), ("wallpaperFollowsTheme", wallpaperFollowsTheme != nil),
-         ("tiling", tiling != nil), ("floatingApps", floatingApps != nil), ("glow", glow != nil), ("bar", bar != nil),
-         ("keyboard", keyboard != nil)].filter(\.1).map(\.0)
-    }
+    public var changedFields: [String] { before.keys.sorted() }
 
-    public var isEmpty: Bool {
-        theme == nil && themeTmux == nil && wallpaperFollowsTheme == nil && tiling == nil && floatingApps == nil
-            && glow == nil && bar == nil && keyboard == nil
-    }
+    public var isEmpty: Bool { before.isEmpty }
 
     public func apply(to settings: inout OrbitSettings) {
-        if let theme { settings.theme = theme }
-        if let themeTmux { settings.themeTmux = themeTmux }
-        if let wallpaperFollowsTheme { settings.wallpaperFollowsTheme = wallpaperFollowsTheme }
-        if let tiling { settings.tiling = tiling }
-        if let floatingApps { settings.floatingApps = floatingApps }
-        if let glow { settings.glow = glow }
-        if let bar { settings.bar = bar }
-        if let keyboard { settings.keyboard = keyboard }
+        guard var current = (try? JSONValue(encoding: settings))?.objectValue else { return }
+        for (key, value) in before {
+            if value == .null { current[key] = nil } else { current[key] = value }
+        }
+        if let data = try? JSONEncoder().encode(JSONValue.object(current)), let restored = try? OrbitSettings.decode(data) {
+            settings = restored
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case before }
+
+    public init(from decoder: Decoder) throws {
+        if let container = try? decoder.container(keyedBy: CodingKeys.self), container.contains(.before) {
+            before = try container.decode([String: JSONValue].self, forKey: .before)
+        } else {
+            // Written by an Orbit before 2.0: one key per setting it had changed.
+            before = (try JSONValue(from: decoder)).objectValue ?? [:]
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(before, forKey: .before)
     }
 }
 
@@ -131,6 +135,8 @@ public struct JournalEntry: Codable, Sendable, Equatable, Identifiable {
     public var outcome: Outcome?
     /// What went wrong, when it didn't work.
     public var message: String?
+    /// Changes of one kind on one day share an entry (sorting Downloads moves files all day long).
+    public var group: String?
 
     public var failed: Bool { outcome == .failed || outcome == .interrupted }
 

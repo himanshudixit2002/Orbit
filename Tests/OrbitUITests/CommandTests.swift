@@ -165,3 +165,36 @@ import Testing
         #expect(model.noticeNewAttention().isEmpty)   // already known
     }
 }
+
+@MainActor
+@Suite struct LinkSafetyTests {
+    @Test func aLinkWithoutTheTokenAsksFirst() async throws {
+        let model = try practiceModel()
+        model.status = SnapshotHarness.status(for: "all-on")
+        var asked: [OrbitCommand] = []
+        model.confirmLink = { asked.append($0); return false }
+        model.open(url: URL(string: "orbitdev://off/glow")!)
+        model.open(url: URL(string: "orbitdev://page/monitor")!)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(asked == [.setFeature(.glow, on: false)])
+        #expect(model.ctx.store.journal.isEmpty)
+        model.open(url: URL(string: "orbitdev://off/glow?token=\(model.ctx.store.linkToken)")!)
+        for _ in 0..<200 where model.ctx.store.journal.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(asked.count == 1)
+        #expect(model.ctx.store.journal.last?.title == "Turned off the window glow")
+    }
+
+    @Test func modeEditsGoIntoTheHistoryWithUndo() async throws {
+        let model = try practiceModel()
+        var mode = ModeDefinition.newCustom()
+        mode.name = "Study"
+        model.saveMode(mode)
+        for _ in 0..<200 where model.ctx.store.journal.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let entry = try #require(model.ctx.store.journal.last)
+        #expect(entry.title == "Added Study mode")
+        #expect(model.ctx.store.settings.modes.contains { $0.name == "Study" })
+        model.undo(entry.id)
+        for _ in 0..<200 where model.ctx.store.settings.modes.contains(where: { $0.name == "Study" }) { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(!model.ctx.store.settings.modes.contains { $0.name == "Study" })
+    }
+}

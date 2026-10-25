@@ -91,6 +91,11 @@ public struct Actions: Sendable {
         return ctx.store.root.appending(path: "Backups/\(stamp) \(label)")
     }
 
+    /// A change to Orbit's own settings only (a mode edited, say), with Undo.
+    public func editSettings(_ message: String, _ change: (inout OrbitSettings) -> Void) -> ActionOutcome {
+        ActionOutcome(ok: true, message: message, undo: changeSettings(change))
+    }
+
     /// Changes Orbit's settings and returns how to put back exactly what changed.
     func changeSettings(_ change: (inout OrbitSettings) -> Void) -> [UndoAction] {
         let (before, after) = ctx.store.updateSettings(change)
@@ -137,6 +142,18 @@ public struct Actions: Sendable {
         try ctx.files.write(data, to: url, executable: executable)
         ctx.store.noteWritten(file, data: data)
         return [.restoreFile(path: url.path(percentEncoded: false), backup: backup?.path(percentEncoded: false))]
+    }
+
+    /// Sets or removes keys in another app's JSON settings file, leaving the rest of it as it was (a
+    /// copy of the file is kept in `backups` too). Undo puts back only those keys.
+    @discardableResult
+    func patchJSON(_ url: URL, _ changes: [String: JSONKeyPatch.Change], backups: URL) throws -> [UndoAction] {
+        let text = ctx.files.read(url).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        let result = try JSONKeyPatch.apply(changes, to: text)
+        guard result.text != text else { return [] }
+        _ = try ctx.files.backup(url, into: backups)
+        try ctx.files.write(Data(result.text.utf8), to: url, executable: false)
+        return [.restoreJSONKeys(path: url.path(percentEncoded: false), values: result.before, absent: result.absent)]
     }
 
     func writePlain(_ url: URL, _ text: String, executable: Bool, backups: URL) throws -> [UndoAction] {
@@ -561,6 +578,14 @@ public struct Actions: Sendable {
                 let result = await ctx.run(Commands.appleScript(Self.loginItemScript(name: name, path: path, on: wasOn), effect: .systemSetting,
                                                                 summary: wasOn ? "Open \(name) when you log in again" : "Stop opening \(name) at login"))
                 if !result.ok { failures.append("\(name) at login: \(result.failureMessage)") }
+            case .restoreJSONKeys(let path, let values, let absent):
+                do {
+                    var changes = values.mapValues { JSONKeyPatch.Change.set($0) }
+                    for key in absent { changes[key] = .remove }
+                    try patchJSON(URL(fileURLWithPath: path), changes, backups: keep)
+                } catch {
+                    failures.append(error.localizedDescription)
+                }
             }
         }
         await refreshAfterPreferences(domains)

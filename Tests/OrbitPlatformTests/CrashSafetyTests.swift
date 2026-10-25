@@ -113,3 +113,39 @@ import Testing
         #expect(cancelled.errorNumber == -128 && cancelled.output == nil)
     }
 }
+
+@Suite struct GroupedHistoryTests {
+    func entry(_ path: String, date: Date = Date()) -> JournalEntry {
+        var entry = JournalEntry(title: "", actions: [.moveBack(current: path, original: "/x/\(path)")], date: date)
+        entry.group = "downloads"
+        return entry
+    }
+
+    @Test func todaysMovesShareOneEntry() {
+        let store = StateStore(root: FileManager.default.temporaryDirectory.appending(path: "orbit-group-\(UUID().uuidString)"))
+        store.appendOrMerge(entry("a")) { "Sorted \($0) download\($0 == 1 ? "" : "s")" }
+        store.append(JournalEntry(title: "Changed the theme", actions: [.gitConfig(key: "k", value: nil)]))
+        store.appendOrMerge(entry("b")) { "Sorted \($0) downloads" }
+        #expect(store.journal.map(\.title) == ["Changed the theme", "Sorted 2 downloads"])
+        #expect(store.journal.last?.actions.count == 2)
+    }
+
+    @Test func yesterdaysOrAnUndoneEntryIsntReused() {
+        let store = StateStore(root: FileManager.default.temporaryDirectory.appending(path: "orbit-group-\(UUID().uuidString)"))
+        store.appendOrMerge(entry("a", date: Date().addingTimeInterval(-86_400 * 2))) { "Sorted \($0)" }
+        store.appendOrMerge(entry("b")) { "Sorted \($0)" }
+        #expect(store.journal.count == 2)
+        store.markUndone(store.journal[1].id)
+        store.appendOrMerge(entry("c")) { "Sorted \($0)" }
+        #expect(store.journal.count == 3)
+    }
+
+    @Test func theLinkTokenIsSecretAndStays() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "orbit-token-\(UUID().uuidString)")
+        let token = StateStore(root: root).linkToken
+        #expect(token.count == 32 && token.allSatisfy(\.isHexDigit))
+        #expect(StateStore(root: root).linkToken == token)
+        let mode = try FileManager.default.attributesOfItem(atPath: root.appending(path: "link-token").path(percentEncoded: false))[.posixPermissions] as? Int
+        #expect(mode == 0o600)
+    }
+}

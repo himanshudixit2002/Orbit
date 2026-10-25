@@ -14,6 +14,27 @@ public enum OrbitCommand: Codable, Sendable, Hashable {
     case checkStatus
     case open(OrbitDestination)
 
+    /// What it does, mid-sentence: "turn off window tiling".
+    public var summary: String {
+        switch self {
+        case .setFeature(let id, let on): "turn \(on ? "on" : "off") \(id.inSentence)"
+        case .toggleFeature(let id): "switch \(id.inSentence) on or off"
+        case .setTheme(let theme): "switch to the \(Palette.named(theme).name) theme"
+        case .startMode(let id): "start the \(id) mode"
+        case .toggleMode(let id): "switch the \(id) mode on or off"
+        case .stopMode: "stop the mode that's on"
+        case .sortDownloads: "sort your Downloads folder"
+        case .checkStatus: "check everything"
+        case .open(let destination):
+            switch destination {
+            case .page(let page): "open \(page.title)"
+            case .setup: "open the guided setup"
+            case .panel: "open the quick panel"
+            case .palette: "open the command palette"
+            }
+        }
+    }
+
     /// Only showing something brings Orbit to the front; changes happen where the user already is.
     public var showsOrbit: Bool {
         if case .open = self { true } else { false }
@@ -83,8 +104,13 @@ public enum OrbitLink {
         }
     }
 
-    /// The link that does `command`, when there is one.
-    public static func url(for command: OrbitCommand, scheme: String = "orbit") -> URL? {
+    /// The token a link carries (see `StateStore.linkToken`).
+    public static func token(in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "token" }?.value
+    }
+
+    /// The link that does `command`, when there is one. Links that change things carry `token`.
+    public static func url(for command: OrbitCommand, scheme: String = "orbit", token: String? = nil) -> URL? {
         let path: String? = switch command {
         case .open(.page(let page)): "page/\(page.rawValue)"
         case .open(.setup): "setup"
@@ -98,7 +124,8 @@ public enum OrbitLink {
         case .sortDownloads: "sort-downloads"
         case .checkStatus: "check"
         }
-        return path.flatMap { URL(string: "\(scheme)://\($0)") }
+        let query = token.map { command.showsOrbit ? "" : "?token=\($0)" } ?? ""
+        return path.flatMap { URL(string: "\(scheme)://\($0)\(query)") }
     }
 
     private static func switchable(_ name: String?) -> FeatureID? {

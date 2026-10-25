@@ -19,6 +19,7 @@ public final class StateStore: Sendable {
         var baseline: Baseline?
         var inflight: [InflightChange] = []
         var activeMode: ModeRecord?
+        var linkToken: String?
     }
     private let state: Locked<State>
     /// baseline.json was there but couldn't be read: taking a new one now would record Orbit's own changes.
@@ -145,6 +146,29 @@ public final class StateStore: Sendable {
         }
     }
 
+    /// Records a change that belongs with others of its kind today (sorting Downloads, say): it joins
+    /// that group's entry while the entry is from today and not undone, else it starts a new one.
+    /// `title` names the entry from how many steps it now holds.
+    public func appendOrMerge(_ entry: JournalEntry, title: (Int) -> String) {
+        guard let group = entry.group, !entry.actions.isEmpty else { return append(entry) }
+        state.withLock { s in
+            if let i = s.journal.lastIndex(where: { $0.group == group }), !s.journal[i].undone,
+               Calendar.current.isDate(s.journal[i].date, inSameDayAs: entry.date) {
+                var merged = s.journal.remove(at: i)
+                merged.actions += entry.actions
+                merged.date = entry.date
+                merged.title = title(merged.actions.count)
+                s.journal.append(merged)
+                save(s.journal, "journal.json")
+            } else {
+                var fresh = entry
+                fresh.title = title(entry.actions.count)
+                add([fresh], to: &s)
+            }
+            end(entry.id, in: &s)
+        }
+    }
+
     private func add(_ entries: [JournalEntry], to s: inout State) {
         guard !entries.isEmpty else { return }
         s.journal += entries
@@ -205,6 +229,28 @@ public final class StateStore: Sendable {
             s.inflight = []
             save(s.inflight, "inflight.json")
             return entries
+        }
+    }
+
+    // MARK: Links
+
+    /// A secret only Orbit's own links carry (those it shows and writes into Karabiner rules): a link
+    /// without it, from a web page say, asks before it changes anything.
+    public var linkToken: String {
+        state.withLock { s in
+            if let token = s.linkToken { return token }
+            let file = root.appending(path: "link-token")
+            if let saved = try? String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+               saved.count >= 32 {
+                s.linkToken = saved
+                return saved
+            }
+            let token = (0..<16).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try? Data(token.utf8).write(to: file, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path(percentEncoded: false))
+            s.linkToken = token
+            return token
         }
     }
 

@@ -3,7 +3,7 @@ import Foundation
 /// Everything the user can change in Orbit. Saved as JSON; missing keys fall back to these defaults,
 /// which match how the Mac was set up before Orbit.
 public struct OrbitSettings: Codable, Sendable, Equatable {
-    public var version = 1
+    public var version = 2
     public var theme: ThemeID = .tokyoNight
     /// Off until the user asks: a theme should never replace a wallpaper they chose.
     public var wallpaperFollowsTheme = false
@@ -35,7 +35,10 @@ public struct OrbitSettings: Codable, Sendable, Equatable {
         let defaults = try JSONSerialization.jsonObject(with: JSONEncoder().encode(OrbitSettings()))
         let stored = try JSONSerialization.jsonObject(with: data)
         let merged = merge(defaults, stored)
-        return try JSONDecoder().decode(OrbitSettings.self, from: JSONSerialization.data(withJSONObject: merged))
+        var settings = try JSONDecoder().decode(OrbitSettings.self, from: JSONSerialization.data(withJSONObject: merged))
+        // Saved by Orbit 1: everything it had still means the same; new settings take their defaults.
+        if settings.version < 2 { settings.version = 2 }
+        return settings
     }
 
     public func encoded() throws -> Data {
@@ -128,6 +131,16 @@ public struct HyperBinding: Codable, Sendable, Equatable, Hashable, Identifiable
 
     public var id: String { key }
 
+    private enum CodingKeys: String, CodingKey { case key, appName, appPath, bundleID }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        appName = c.value(.appName, or: "")
+        appPath = c.value(.appPath, or: "")
+        bundleID = c.value(.bundleID, or: nil)
+    }
+
     public init(key: String, appName: String, appPath: String, bundleID: String? = nil) {
         self.key = key
         self.appName = appName
@@ -180,6 +193,21 @@ public struct ModeDefinition: Codable, Sendable, Equatable, Identifiable {
     public var hideOthers: Bool
     public var keepAwake: KeepAwake
     public var tilingOn: Bool
+
+    private enum CodingKeys: String, CodingKey { case id, name, symbol, blurb, openApps, quitApps, hideOthers, keepAwake, tilingOn }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = c.value(.name, or: id.capitalized)
+        symbol = c.value(.symbol, or: "sparkles")
+        blurb = c.value(.blurb, or: "")
+        openApps = c.value(.openApps, or: [])
+        quitApps = c.value(.quitApps, or: [])
+        hideOthers = c.value(.hideOthers, or: false)
+        keepAwake = c.value(.keepAwake, or: .off)
+        tilingOn = c.value(.tilingOn, or: false)
+    }
 
     public init(id: String, name: String, symbol: String, blurb: String, openApps: [String], quitApps: [String],
                 hideOthers: Bool, keepAwake: KeepAwake, tilingOn: Bool) {

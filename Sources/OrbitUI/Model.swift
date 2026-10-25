@@ -66,6 +66,8 @@ public final class AppModel {
     /// The main window was asked for before Orbit could open windows.
     @ObservationIgnored var mainWindowWanted = false
     @ObservationIgnored var lastLink: (url: URL, at: Date)?
+    /// Asks about a link without Orbit's token (tests answer for the user).
+    @ObservationIgnored var confirmLink: @MainActor (OrbitCommand) -> Bool = AppModel.askAboutLink
     /// Remembers which mode a Focus started (tests use their own).
     @ObservationIgnored var focusDefaults = UserDefaults.standard
     @ObservationIgnored let commandPalette = PaletteController()
@@ -683,27 +685,27 @@ public final class AppModel {
     // MARK: Modes
 
     /// Saves a mode the user edited or created.
+    /// Saves a mode the user edited or created, in the history with Undo.
     func saveMode(_ mode: ModeDefinition) {
-        ctx.store.updateSettings { s in
-            if let i = s.modes.firstIndex(where: { $0.id == mode.id }) {
-                s.modes[i] = mode
-            } else {
-                s.modes.append(mode)
+        let isNew = !settings.modes.contains { $0.id == mode.id }
+        Task {
+            await performNow("modes", isNew ? "Added \(mode.name) mode" : "Edited \(mode.name) mode") { [actions] _ in
+                actions.editSettings(isNew ? "Added \(mode.name) mode." : "Saved \(mode.name) mode.") { s in
+                    if let i = s.modes.firstIndex(where: { $0.id == mode.id }) { s.modes[i] = mode } else { s.modes.append(mode) }
+                }
             }
+            modesEdited?()
         }
-        settings = ctx.store.settings
-        publishSnapshot()
-        modesEdited?()
-        show(Toast(ok: true, message: "Saved \(mode.name) mode.", journalID: nil))
     }
 
     func deleteMode(_ id: String) {
         let name = settings.modes.first { $0.id == id }?.name ?? "The mode"
-        ctx.store.updateSettings { $0.modes.removeAll { $0.id == id } }
-        settings = ctx.store.settings
-        publishSnapshot()
-        modesEdited?()
-        show(Toast(ok: true, message: "\(name) mode is deleted.", journalID: nil))
+        Task {
+            await performNow("modes", "Deleted \(name) mode") { [actions] _ in
+                actions.editSettings("\(name) mode is deleted.") { $0.modes.removeAll { $0.id == id } }
+            }
+            modesEdited?()
+        }
     }
 
     /// Puts one of the four built-in modes back the way Orbit ships it.
