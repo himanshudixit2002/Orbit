@@ -11,6 +11,18 @@ public enum FeatureID: String, CaseIterable, Sendable, Codable, Identifiable {
 
     public var isSwitchable: Bool { Self.switchable.contains(self) }
 
+    /// The feature mid-sentence, as the history says it: "Turned off the new menu bar".
+    public var inSentence: String {
+        switch self {
+        case .tiling: "window tiling"
+        case .glow: "the window glow"
+        case .menuBar: "the new menu bar"
+        case .capsLock: "Caps Lock superpowers"
+        case .downloads: "Downloads sorting"
+        default: title
+        }
+    }
+
     public var title: String {
         switch self {
         case .tiling: "Window tiling"

@@ -7,39 +7,50 @@ import UserNotifications
 /// Notification Center without asking; banners only once the user turns them on from the Health page.
 @MainActor
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
-    enum Kind: String {
-        case failed, keepsStopping
+    enum Kind: String, CaseIterable {
+        case failed, keepsStopping, attention, changed, edited
+
+        /// The button that does something about it (Open Orbit is always there too).
+        var act: String? {
+            switch self {
+            case .failed: "Try Again"
+            case .attention: "Fix"
+            case .changed: "Undo"
+            case .edited: "Review"
+            case .keepsStopping: nil
+            }
+        }
     }
 
     weak var model: AppModel?
     private var sent: [NoticePolicy.Sent] = []
-    /// "Try Again" for the last few failed changes, by notification.
-    private var retries: [(id: String, retry: () -> Void)] = []
+    /// What each recent notification's button does, by notification.
+    private var acts: [(id: String, act: () -> Void)] = []
     private var center: UNUserNotificationCenter { .current() }
 
     func start() {
         center.delegate = self
         let open = UNNotificationAction(identifier: "open", title: "Open Orbit", options: [.foreground])
-        let retry = UNNotificationAction(identifier: "retry", title: "Try Again", options: [])
-        center.setNotificationCategories([
-            UNNotificationCategory(identifier: Kind.failed.rawValue, actions: [retry, open], intentIdentifiers: []),
-            UNNotificationCategory(identifier: Kind.keepsStopping.rawValue, actions: [open], intentIdentifiers: [])
-        ])
+        center.setNotificationCategories(Set(Kind.allCases.map { kind in
+            let act = kind.act.map { UNNotificationAction(identifier: "act", title: $0, options: kind == .edited ? [.foreground] : []) }
+            return UNNotificationCategory(identifier: kind.rawValue, actions: (act.map { [$0] } ?? []) + [open], intentIdentifiers: [])
+        }))
     }
 
     /// Sends a notice, unless Orbit's window is in front (its toast says it there) or the same one went
     /// out lately. Returns whether it went.
     @discardableResult
-    func send(_ kind: Kind, key: String, title: String, body: String, page: Page? = nil, retry: (() -> Void)? = nil) -> Bool {
+    func send(_ kind: Kind, key: String, title: String, body: String, page: Page? = nil, every: TimeInterval = 600,
+              act: (() -> Void)? = nil) -> Bool {
         if NSApp.isActive, NSApp.keyWindow?.isVisible == true { return false }
         let now = Date()
-        guard NoticePolicy.allows(key: key, kind: kind.rawValue, sent: sent, now: now) else { return false }
-        sent.removeAll { now.timeIntervalSince($0.at) > 3600 }
+        guard NoticePolicy.allows(key: key, kind: kind.rawValue, sent: sent, now: now, every: every) else { return false }
+        sent.removeAll { now.timeIntervalSince($0.at) > max(3600, every) }
         sent.append(.init(key: key, kind: kind.rawValue, at: now))
         let id = UUID().uuidString
-        if let retry {
-            retries.append((id, retry))
-            if retries.count > 10 { retries.removeFirst() }
+        if let act {
+            acts.append((id, act))
+            if acts.count > 10 { acts.removeFirst() }
         }
         let content = UNMutableNotificationContent()
         content.title = title
@@ -68,8 +79,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func handle(id: String, action: String, page: String?) {
-        if action == "retry", let index = retries.firstIndex(where: { $0.id == id }) {
-            retries.remove(at: index).retry()
+        if action == "act", let index = acts.firstIndex(where: { $0.id == id }) {
+            acts.remove(at: index).act()
             return
         }
         model?.openMainWindow()

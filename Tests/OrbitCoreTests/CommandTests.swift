@@ -78,3 +78,35 @@ import Testing
         #expect(a.done == 1 && a.attention.map(\.id) == [.glow])
     }
 }
+
+@Suite struct HotKeyTests {
+    @Test func shortcutsReadTheWayMenusShowThem() {
+        #expect(HotKeySetting.standard.label == "Hyper + Space")
+        let k = HotKeySetting(keyCode: 40, modifiers: HotKeySetting.control | HotKeySetting.option | HotKeySetting.command, key: "K")
+        #expect(k.label == "⌃⌥⌘K")
+        #expect(k.isUsable)
+        #expect(!HotKeySetting(keyCode: 40, modifiers: HotKeySetting.command, key: "K").isUsable)
+    }
+
+    @Test func takenShortcutsAreCaught() {
+        let spotlight = HotKeySetting(keyCode: 49, modifiers: HotKeySetting.command, key: "Space")
+        #expect(HotKeyClash.check(spotlight, skhdrc: nil) == "macOS already uses ⌘Space for Spotlight.")
+        let skhdrc = """
+        # focus
+        alt - h : yabai -m window --focus west
+        hyper - space : yabai -m space --layout bsp
+        cmd + shift - k : yabai -m window --swap north
+        """
+        #expect(HotKeyClash.check(.standard, skhdrc: skhdrc) == "Window tiling already uses Hyper + Space (in skhdrc).")
+        let swapNorth = HotKeySetting(keyCode: 40, modifiers: HotKeySetting.command | HotKeySetting.shift, key: "K")
+        #expect(HotKeyClash.check(swapNorth, skhdrc: skhdrc) != nil)
+        #expect(HotKeyClash.check(.standard, skhdrc: "alt - h : yabai -m window --focus west") == nil)
+    }
+
+    @Test func someNoticesWaitLonger() {
+        let now = Date()
+        let sent = [NoticePolicy.Sent(key: "attention tiling", kind: "attention", at: now.addingTimeInterval(-3600))]
+        #expect(NoticePolicy.allows(key: "attention tiling", kind: "attention", sent: sent, now: now))
+        #expect(!NoticePolicy.allows(key: "attention tiling", kind: "attention", sent: sent, now: now, every: 6 * 3600))
+    }
+}

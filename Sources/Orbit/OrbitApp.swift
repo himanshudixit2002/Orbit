@@ -26,6 +26,7 @@ struct OrbitApp: App {
                 Button("Search Orbit…") { model.focusSearch() }.keyboardShortcut("f")
             }
             CommandMenu("Orbit") {
+                Button("Command Palette…") { model.showPalette() }.keyboardShortcut("k")
                 Button("Guided Setup…") { model.showSetup = true }.keyboardShortcut("s", modifiers: [.command, .shift])
                 Button("Check Everything Again") { Task { await model.refresh() } }.keyboardShortcut("r")
             }

@@ -16,6 +16,7 @@ extension Page {
         case .keyboard: .orange
         case .files: .teal
         case .modes: .purple
+        case .shortcuts: .indigo
         case .monitor: .green
         case .cleanup: .yellow
         case .dockFinder: .blue
@@ -67,6 +68,12 @@ public final class AppModel {
     @ObservationIgnored var lastLink: (url: URL, at: Date)?
     /// Remembers which mode a Focus started (tests use their own).
     @ObservationIgnored var focusDefaults = UserDefaults.standard
+    @ObservationIgnored let commandPalette = PaletteController()
+    /// What needed attention at the last check; nil before the first one.
+    @ObservationIgnored var lastAttention: Set<FeatureID>?
+    @ObservationIgnored let hotKey = HotKey()
+    /// Whether the palette's shortcut is working (another app may own it).
+    var hotKeyRegistered = false
     /// Told when the user adds, edits or deletes a mode (Siri's phrases name them).
     @ObservationIgnored public var modesEdited: (() -> Void)?
     /// The Dock and Finder as last read, so their page opens on real values straight away.
@@ -97,7 +104,7 @@ public final class AppModel {
     /// macOS notifications (only in the real app: they need its bundle).
     var notifier: Notifier?
     /// Helpers the watchdog says keep stopping, so each is announced once.
-    private var keepsStopping: Set<Helper> = []
+    private(set) var keepsStopping: Set<Helper> = []
     private var pendingRestarts: Set<Helper> = []
     private var activeObserver: NSObjectProtocol?
     /// Set when Orbit sends the user to System Settings to fix tiling, so coming back checks again.
@@ -148,6 +155,7 @@ public final class AppModel {
 
     func start() async {
         modes.resume()
+        applyHotKey()
         publisher.startHeartbeat { [weak self] in self.map { $0.makeSnapshot() } }
         Task { _ = await readDockFinder() }
         Task { await keepOpeningAtLogin() }
@@ -306,6 +314,7 @@ public final class AppModel {
         exitWatcher?.watch(fresh.helperPIDs)
         barFeeder.update(running: status.menuBar.run.isRunning, barPID: status.menuBar.run.pid, bar: settings.bar, palette: settings.palette)
         publishSnapshot()
+        noticeNewAttention()
         showLoginStatus(await Task.detached { SMAppService.mainApp.status }.value)
     }
 
@@ -370,6 +379,11 @@ public final class AppModel {
             if !outcome.ok { notifyFailure(title, outcome.message) { [weak self] in self?.perform(key, title, work) } }
         } catch let edited as EditedByHand {
             ctx.store.endChange(change)
+            // Asked from outside the window: the question waits in Orbit, and a notice says so.
+            if quiet {
+                notifier?.send(.edited, key: "edited \(edited.file)", title: "Orbit didn't change \(edited.file.title)",
+                               body: "They were edited by hand. Open Orbit to compare and choose.") { [weak self] in self?.openMainWindow() }
+            }
             // Nothing has changed yet, so there's nothing to re-check. Returning now also frees `key`
             // before the user can answer. Their OK covers only the file they were shown: any other
             // hand-edited file in the same change still gets its own question.
@@ -409,7 +423,7 @@ public final class AppModel {
 
     /// A change that didn't work while Orbit's window wasn't in front (from the menu bar panel, say).
     func notifyFailure(_ title: String, _ message: String, retry: @escaping () -> Void) {
-        notifier?.send(.failed, key: "failed \(title)", title: "\(title) didn't work", body: message, page: .health, retry: retry)
+        notifier?.send(.failed, key: "failed \(title)", title: "\(title) didn't work", body: message, page: .health, act: retry)
     }
 
     private func finished(_ key: String) {

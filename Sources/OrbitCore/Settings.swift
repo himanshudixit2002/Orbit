@@ -17,6 +17,8 @@ public struct OrbitSettings: Codable, Sendable, Equatable {
     public var setupCompleted = false
     /// Whether the user wants Orbit to open at login; nil until they choose (it then opens, quietly).
     public var openAtLogin: Bool?
+    /// The shortcut that opens the command palette from anywhere; nil means the standard Hyper+Space.
+    public var hotKey: HotKeySetting?
 
     public init() {}
 

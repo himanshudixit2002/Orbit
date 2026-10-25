@@ -128,3 +128,40 @@ import Testing
         #expect(model.modes.active?.modeID == "custom-b")
     }
 }
+
+@MainActor
+@Suite struct PaletteTests {
+    func model() throws -> AppModel {
+        let model = try practiceModel()
+        model.status = SnapshotHarness.status(for: "all-on")
+        return model
+    }
+
+    @Test func switchesSayWhichWayTheyWillGo() throws {
+        let model = try model()
+        let titles = model.paletteItems().map(\.title)
+        #expect(titles.contains("Turn off window tiling"))
+        #expect(!titles.contains("Turn on window tiling"))
+        #expect(!titles.contains("Switch to \(model.palette.name)"))
+        #expect(titles.contains("Start Focus mode"))
+        #expect(titles.contains("Open Shortcuts"))
+    }
+
+    @Test func typingFindsTheBestMatchFirst() throws {
+        let items = try model().paletteItems()
+        #expect(PaletteFilter.results("nord", in: items).first?.title == "Switch to Nord")
+        #expect(PaletteFilter.results("turn off glow", in: items).first?.title == "Turn off the window glow")
+        #expect(PaletteFilter.results("monitor", in: items).first?.title == "Open Monitor")
+        #expect(PaletteFilter.results("", in: items).count == 8)
+        #expect(PaletteFilter.results("zzzz", in: items).isEmpty)
+    }
+
+    @Test func onlyNewProblemsAreNoticed() throws {
+        let model = try model()
+        #expect(model.noticeNewAttention().isEmpty)   // the first check: nothing is new
+        model.status = SnapshotHarness.status(for: "fresh")
+        let new = model.noticeNewAttention()
+        #expect(Set(new) == Set(model.attention))
+        #expect(model.noticeNewAttention().isEmpty)   // already known
+    }
+}

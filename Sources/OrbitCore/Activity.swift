@@ -29,8 +29,8 @@ extension String {
     public var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
-/// Keeps notifications rare enough to stay useful: the same one at most every ten minutes, and at most
-/// three of a kind an hour.
+/// Keeps notifications rare enough to stay useful: the same one at most every ten minutes (or less
+/// often, as asked), and at most three of a kind an hour.
 public enum NoticePolicy {
     public struct Sent: Sendable, Equatable {
         public var key: String
@@ -44,8 +44,8 @@ public enum NoticePolicy {
         }
     }
 
-    public static func allows(key: String, kind: String, sent: [Sent], now: Date) -> Bool {
-        if sent.contains(where: { $0.key == key && now.timeIntervalSince($0.at) < 600 }) { return false }
+    public static func allows(key: String, kind: String, sent: [Sent], now: Date, every: TimeInterval = 600) -> Bool {
+        if sent.contains(where: { $0.key == key && now.timeIntervalSince($0.at) < every }) { return false }
         return sent.filter { $0.kind == kind && now.timeIntervalSince($0.at) < 3600 }.count < 3
     }
 }

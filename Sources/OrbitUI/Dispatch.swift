@@ -88,32 +88,68 @@ extension AppModel {
             return OrbitReply(ok: true, message: "\(id.title) is already \(on ? "on" : "off").")
         }
         let result = await performNow(change.key, change.title, quiet: source.isBackground, change.work)
+        if result.ok, source == .link { noticeLinkChange(change.title) }
         return OrbitReply(ok: result.ok, message: result.message)
+    }
+
+    /// A link can come from anywhere: what it changed shows in a notification, with Undo.
+    func noticeLinkChange(_ title: String) {
+        guard let entry = journal.last(where: { $0.title == title && !$0.undone }), Date().timeIntervalSince(entry.date) < 10 else { return }
+        notifier?.send(.changed, key: "link \(entry.id)", title: title, body: "A link asked Orbit to do this. Undo puts it back.") { [weak self] in
+            self?.undo(entry.id)
+        }
+    }
+
+    /// Something that newly needs the user (a permission taken away, say), while Orbit's window isn't in
+    /// front: one notice per feature every six hours at most, with Fix. Not on the first check after
+    /// launch (nothing is new then), and not for a helper the watchdog has already reported.
+    @discardableResult
+    func noticeNewAttention() -> [FeatureID] {
+        let now = Set(attention)
+        defer { lastAttention = now }
+        guard let before = lastAttention else { return [] }
+        let new = now.subtracting(before).sorted(by: { $0.rawValue < $1.rawValue }).filter { !reportedByWatchdog($0) }
+        for id in new {
+            notifier?.send(.attention, key: "attention \(id)", title: "\(id.title) needs your attention",
+                           body: state(id).detail ?? "Open Orbit to see why.", page: .health, every: 6 * 3600) { [weak self] in
+                self?.fix(id)
+            }
+        }
+        return new
+    }
+
+    func reportedByWatchdog(_ id: FeatureID) -> Bool {
+        switch id {
+        case .tiling: !keepsStopping.isDisjoint(with: [Helper.yabai, .skhd])
+        case .glow: keepsStopping.contains(.borders)
+        case .menuBar: keepsStopping.contains(.sketchybar)
+        default: false
+        }
     }
 
     /// The change behind a feature's switch: its busy key, its title in the history, and the work.
     func featureChange(_ id: FeatureID, on: Bool) -> (key: String, title: String, work: Work)? {
         switch id {
         case .tiling:
-            return ("tiling", on ? "Turned on window tiling" : "Turned off window tiling", { [actions] in
+            return ("tiling", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] in
                 try await actions.setTiling(on, policy: $0)
             })
         case .glow:
-            return ("glow", on ? "Turned on the window glow" : "Turned off the window glow", { [actions] in
+            return ("glow", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] in
                 try await actions.setGlow(on, policy: $0)
             })
         case .menuBar:
-            return ("menuBar", on ? "Turned on the new menu bar" : "Turned off the new menu bar", { [actions] in
+            return ("menuBar", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] in
                 try await actions.setMenuBar(on, policy: $0)
             })
         case .capsLock:
             var keyboard = settings.keyboard
             keyboard.capsLockEnabled = on
-            return ("keyboard", on ? "Turned on Caps Lock superpowers" : "Turned off Caps Lock superpowers", { [actions, keyboard] _ in
+            return ("keyboard", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions, keyboard] _ in
                 try await actions.applyKeyboard(keyboard)
             })
         case .downloads:
-            return ("downloads", on ? "Turned on Downloads sorting" : "Turned off Downloads sorting", { [actions] _ in
+            return ("downloads", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] _ in
                 await actions.setDownloads(on)
             })
         case .raycast, .altTab, .ice, .syntaxHighlight, .terminalLook:
@@ -178,8 +214,8 @@ extension AppModel {
             }
             return OrbitReply(ok: true, message: "Opened the quick panel.")
         case .palette:
-            focusSearch()
-            return OrbitReply(ok: true, message: "Opened search.")
+            showPalette()
+            return OrbitReply(ok: true, message: "Opened the command palette.")
         }
     }
 }
