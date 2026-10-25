@@ -48,6 +48,7 @@ struct OrbitApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static let snapshotFolder: URL? = {
         let args = CommandLine.arguments

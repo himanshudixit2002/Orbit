@@ -7,12 +7,15 @@ import PackageDescription
 //   OrbitCore      pure logic: settings, palettes, config generators, parsers, commands
 //   OrbitPlatform  the only code that touches the system: processes, files, preferences, probes
 //   OrbitUI        SwiftUI design system, pages, guided setup, menu bar panel
-//   Orbit          the app entry point, bundled into Orbit.app by Scripts/build.sh
+//
+// The app itself (Sources/Orbit) is built by Orbit.xcodeproj with Scripts/build.sh: it needs Xcode
+// for App Intents and the widget extension. This package holds everything that can be built and
+// tested from a shell.
 let package = Package(
     name: "Orbit",
-    platforms: [.macOS("26.0")],
+    platforms: [.macOS("27.0")],
     products: [
-        .executable(name: "Orbit", targets: ["Orbit"])
+        .library(name: "OrbitUI", targets: ["OrbitUI"])
     ],
     targets: [
         .target(name: "OrbitCore", path: "Sources/OrbitCore"),
@@ -21,12 +24,6 @@ let package = Package(
             name: "OrbitUI",
             dependencies: ["OrbitCore", "OrbitPlatform"],
             path: "Sources/OrbitUI",
-            swiftSettings: [.defaultIsolation(MainActor.self)]
-        ),
-        .executableTarget(
-            name: "Orbit",
-            dependencies: ["OrbitUI"],
-            path: "Sources/Orbit",
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
         .testTarget(

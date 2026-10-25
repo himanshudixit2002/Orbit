@@ -13,6 +13,16 @@ if ! swift test > "$LOG" 2>&1; then
 fi
 sed 's/\x1b\[[0-9;]*m//g' "$LOG" | grep -E "Test run with"
 
+# The app and its extension are built by Xcode, not the package: make sure they still compile.
+XLOG=.build/xcodebuild-test.log
+if ! xcodebuild -project Orbit.xcodeproj -scheme Orbit -configuration Debug -derivedDataPath .build/xcode \
+     -destination "platform=macOS" -allowProvisioningUpdates build > "$XLOG" 2>&1; then
+  grep -E "error:|BUILD FAILED" "$XLOG" | sort -u | head -40
+  echo "!! the app didn't build (full log: $XLOG)"
+  exit 1
+fi
+echo "==> App builds"
+
 fail() { echo "!! $1"; exit 1; }
 # Nothing may animate forever: a repeating effect redraws every frame, visible or not.
 if grep -rnE "repeatForever|\.repeat\(\.continuous\)" Sources | grep -v "live-gated"; then fail "continuous animation found"; fi

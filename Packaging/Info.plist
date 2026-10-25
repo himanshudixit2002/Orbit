@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleExecutable</key><string>Orbit</string>
+  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleIdentifier</key><string>__ID__</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>__NAME__</string>
-  <key>CFBundleDisplayName</key><string>__NAME__</string>
+  <key>CFBundleName</key><string>$(ORBIT_NAME)</string>
+  <key>CFBundleDisplayName</key><string>$(ORBIT_NAME)</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>__VERSION__</string>
-  <key>CFBundleVersion</key><string>__BUILD__</string>
+  <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+  <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
-  <key>LSMinimumSystemVersion</key><string>26.0</string>
+  <key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
   <!-- Orbit lives in the menu bar: it gets a Dock icon only while its window is open. -->
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
@@ -23,8 +23,8 @@
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
-      <key>CFBundleURLName</key><string>__ID__</string>
-      <key>CFBundleURLSchemes</key><array><string>__SCHEME__</string></array>
+      <key>CFBundleURLName</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+      <key>CFBundleURLSchemes</key><array><string>$(ORBIT_URL_SCHEME)</string></array>
     </dict>
   </array>
   <key>NSAppleEventsUsageDescription</key>
