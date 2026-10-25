@@ -43,9 +43,11 @@ public struct BrewServiceInfo: Sendable, Decodable, Equatable {
     public let serviceName: String?
     public let file: String?
     public let pid: Int?
+    /// Set to start at login.
+    public let registered: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case name, running, loaded, status, file, pid
+        case name, running, loaded, status, file, pid, registered
         case serviceName = "service_name"
     }
 

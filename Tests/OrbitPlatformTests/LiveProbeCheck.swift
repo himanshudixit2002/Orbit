@@ -67,6 +67,20 @@ struct LiveProbeCheck {
         }
     }
 
+    /// The Developer page's facts on this Mac (it only reads).
+    @Test func developerOnThisMac() async {
+        let probe = DeveloperProbe(SystemContext.make(mode: .live))
+        let start = ContinuousClock.now
+        let projects = await probe.projects()
+        print("PROBE developer: \(projects.count) projects in \(ContinuousClock.now - start)")
+        for project in projects {
+            let git = project.git.map { "\($0.branch) ↑\($0.ahead) ↓\($0.behind) \($0.changes) changed" } ?? "not in git"
+            print("PROBE developer:   \(project.name) [\(project.kind.title)] \(git)")
+        }
+        for service in await probe.services() { print("PROBE developer: service \(service.name) running=\(service.running) atLogin=\(service.atLogin)") }
+        for info in await probe.ports() { print("PROBE developer: :\(info.port.port) \(info.port.command) \(info.owner) \(info.folder ?? "")") }
+    }
+
     /// What the Doctor finds on this Mac (it only reads).
     @Test func doctorOnThisMac() {
         let start = ContinuousClock.now

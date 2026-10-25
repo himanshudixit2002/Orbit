@@ -103,38 +103,3 @@ struct DoctorPanel: View {
         .padding(.vertical, 3)
     }
 }
-
-/// Your projects in ~/Developer.
-struct DeveloperPage: View {
-    @Environment(AppModel.self) private var model
-    @State private var projects: [(name: String, url: URL, inGit: Bool)] = []
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            PageHeader(page: .developer)
-            SectionTitle(text: "Projects")
-            GlassPanel {
-                VStack(alignment: .leading, spacing: 6) {
-                    if projects.isEmpty { Text("No projects found in ~/Developer.").foregroundStyle(.secondary) }
-                    ForEach(projects, id: \.name) { project in
-                        HStack(spacing: 10) {
-                            Image(systemName: project.inGit ? "checkmark.circle.fill" : "exclamationmark.circle")
-                                .foregroundStyle(project.inGit ? Color.green : Color.orange)
-                            Text(project.name)
-                            if !project.inGit { Text("not in git").font(.caption).foregroundStyle(.orange) }
-                            Spacer()
-                            Button { NSWorkspace.shared.activateFileViewerSelecting([project.url]) } label: { Image(systemName: "folder") }
-                                .buttonStyle(.borderless)
-                                .help("Show in Finder")
-                                .accessibilityLabel("Show \(project.name) in Finder")
-                        }
-                    }
-                }
-            }
-        }
-        .task {
-            let developer = model.ctx.paths.developer
-            projects = await Task.detached { DoctorProbe.projects(in: developer) }.value
-        }
-    }
-}

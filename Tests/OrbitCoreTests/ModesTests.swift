@@ -63,3 +63,47 @@ import Testing
         #expect(try JSONDecoder().decode(ModeDefinition.self, from: JSONEncoder().encode(richer)) == richer)
     }
 }
+
+@Suite struct DeveloperReadingTests {
+    @Test func gitStatusSaysBranchDistanceAndChanges() {
+        let text = """
+        # branch.oid 4d7da41
+        # branch.head main
+        # branch.upstream origin/main
+        # branch.ab +2 -1
+        1 .M N... 100644 100644 100644 abc def Sources/App.swift
+        ? notes.txt
+        """
+        #expect(GitStatus.parse(text) == GitStatus(branch: "main", upstream: "origin/main", ahead: 2, behind: 1, changes: 2))
+        #expect(GitStatus.parse("# branch.oid (initial)\n# branch.head main\n") == GitStatus(branch: "main"))
+    }
+
+    @Test func listeningProcessesAreReadOncePerPort() {
+        let text = "p598\ncrapportd\nf11\nn*:49152\nf12\nn*:49152\np4242\ncnode\nf20\nn127.0.0.1:3000\nf21\nn[::1]:3000\n"
+        #expect(ListeningPort.parse(text) == [ListeningPort(pid: 4242, command: "node", port: 3000),
+                                             ListeningPort(pid: 598, command: "rapportd", port: 49152)])
+    }
+
+    @Test func projectKindsComeFromTheirFiles() {
+        #expect(ProjectKind.detect(["Orbit.xcodeproj", "Package.swift"]) == .xcode)
+        #expect(ProjectKind.detect(["pubspec.yaml", "android"]) == .flutter)
+        #expect(ProjectKind.detect(["package.json", "tsconfig.json"]) == .node)
+        #expect(ProjectKind.detect(["README.md"]) == .other)
+        #expect(ProjectKind.node.gitignore.contains("node_modules/"))
+        #expect(ProjectKind.swift.gitignore.contains(".build/"))
+    }
+}
+
+@Suite struct PortOwnerTests {
+    @Test func ownersComeFromWhereTheProgramLives() {
+        #expect(PortOwner.of(executable: "/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter", parent: 1) == .macOS)
+        #expect(PortOwner.of(executable: "/usr/libexec/rapportd", parent: 1) == .macOS)
+        #expect(PortOwner.of(executable: "/Applications/Raycast.app/Contents/MacOS/Raycast", parent: 1) == .app("Raycast"))
+        #expect(PortOwner.of(executable: "/Applications/Antigravity.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper", parent: 812) == .app("Antigravity"))
+        #expect(PortOwner.of(executable: "/opt/homebrew/Cellar/mongodb-community/8.0.4/bin/mongod", parent: 1) == .background)
+        #expect(PortOwner.of(executable: "/opt/homebrew/Cellar/node/24.1.0/bin/node", parent: 4100) == .yours)
+        #expect(PortOwner.of(executable: "/Applications/Xcode.app/Contents/Developer/usr/bin/python3", parent: 4100) == .yours)
+        #expect(PortOwner.of(executable: nil, parent: 4100) == .background)
+        #expect(ListeningPort(pid: 9, command: "ControlCenter", port: 5000).knownUse == "AirPlay Receiver")
+    }
+}

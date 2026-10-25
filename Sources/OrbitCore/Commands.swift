@@ -175,6 +175,23 @@ public enum Commands {
 
     // MARK: Homebrew
 
+    /// A project's branch, how far it is from its upstream, and what changed.
+    public static func gitStatus(_ folder: String) -> Command {
+        Command(Tool.git, ["-C", folder, "status", "--porcelain=v2", "--branch"], effect: .readOnly,
+                summary: "Look at a project's git status", timeout: 10)
+    }
+
+    public static func gitInit(_ folder: String) -> Command {
+        Command(Tool.git, ["-C", folder, "init"], effect: .userFiles, summary: "Start using git in \(URL(fileURLWithPath: folder).lastPathComponent)",
+                timeout: 15)
+    }
+
+    /// Your own processes listening for connections (without root, lsof only sees yours).
+    public static func listeningPorts() -> Command {
+        Command("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn"], effect: .readOnly, summary: "List what's listening",
+                timeout: 10, okStatuses: [0, 1])
+    }
+
     public static func brewServicesInfo() -> Command {
         Command(Tool.brew, ["services", "info", "--all", "--json"], effect: .readOnly,
                 summary: "List Homebrew background helpers", timeout: 20)

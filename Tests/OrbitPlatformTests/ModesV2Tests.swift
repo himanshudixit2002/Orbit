@@ -32,3 +32,68 @@ import Testing
         #expect(record.modeID == "focus" && record.hiddenApps.count == 1 && record.undo.isEmpty && !record.bySchedule)
     }
 }
+
+@Suite struct DeveloperActionTests {
+    @Test func gitInitAddsAGitignoreAndUndoTakesItAway() async throws {
+        let system = FakeSystem()
+        let ctx = try sandboxContext(system)
+        let folder = ctx.paths.developer.appending(path: "Products/App")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: folder.appending(path: "package.json"))
+        let project = ProjectInfo(name: "Products/App", url: folder, kind: .node, git: nil)
+        let actions = Actions(ctx)
+        let outcome = await actions.gitInit(project)
+        #expect(outcome.ok)
+        #expect(system.ran("git", "-C", folder.path(percentEncoded: false), "init"))
+        #expect(try String(contentsOf: folder.appending(path: ".gitignore"), encoding: .utf8).contains("node_modules/"))
+        _ = await actions.undo(outcome.undo)
+        #expect(!FileManager.default.fileExists(atPath: folder.appending(path: ".gitignore").path(percentEncoded: false)))
+        #expect(!system.commands.contains { $0.arguments.contains("commit") || $0.arguments.contains("push") })
+    }
+
+    @Test func servicesStartAndStopAtLoginWithUndo() async throws {
+        let system = FakeSystem()
+        let actions = Actions(try sandboxContext(system))
+        let mongo = ServiceInfo(formula: "mongodb-community", running: true, atLogin: true)
+        let outcome = await actions.changeService(mongo, .stopAtLogin(keepRunning: true))
+        #expect(outcome.ok)
+        #expect(system.ran("brew", "services", "stop", "mongodb-community"))
+        #expect(system.ran("brew", "services", "run", "mongodb-community"))
+        _ = await actions.undo(outcome.undo)
+        #expect(system.ran("brew", "services", "start", "mongodb-community"))
+    }
+}
+
+@Suite struct StopProcessTests {
+    func sleeper() throws -> Process {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        return process
+    }
+
+    @Test func onlyYourOwnRunningProcessIsAskedToQuit() async throws {
+        let child = try sleeper()
+        defer { if child.isRunning { child.terminate() } }
+        let actions = Actions(try sandboxContext())
+        let port = ListeningPort(pid: child.processIdentifier, command: "sleep", port: 3000)
+        #expect(!actions.stopProcess(PortInfo(port: port, owner: .background)).ok)
+        #expect(!actions.stopProcess(PortInfo(port: port, owner: .app("Raycast"))).ok)
+        #expect(!actions.stopProcess(PortInfo(port: ListeningPort(pid: child.processIdentifier, command: "node", port: 3000), owner: .yours)).ok)
+        #expect(child.isRunning)
+        #expect(actions.stopProcess(PortInfo(port: port, owner: .yours)).ok)
+        for _ in 0..<100 where child.isRunning { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(child.terminationReason == .uncaughtSignal && child.terminationStatus == SIGTERM)
+    }
+
+    @Test func practiceOnlyWritesItDown() throws {
+        let child = try sleeper()
+        defer { child.terminate() }
+        let ctx = SystemContext.make(mode: .practice, paths: try tempHome())
+        let port = ListeningPort(pid: child.processIdentifier, command: "sleep", port: 3000)
+        #expect(Actions(ctx).stopProcess(PortInfo(port: port, owner: .yours)).ok)
+        #expect(child.isRunning)
+        #expect(ctx.practiceLog.all.contains { $0.summary.contains("sleep") })
+    }
+}
