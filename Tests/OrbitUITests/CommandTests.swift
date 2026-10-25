@@ -96,3 +96,35 @@ import Testing
         #expect(reloads.current == 2)
     }
 }
+
+@MainActor
+@Suite struct FocusFilterTests {
+    func model() throws -> AppModel {
+        let model = try practiceModel()
+        model.status = SnapshotHarness.status(for: "all-on")
+        model.focusDefaults = UserDefaults(suiteName: "orbit-focus-\(UUID().uuidString)")!
+        for id in ["custom-a", "custom-b"] {
+            let mode = ModeDefinition(id: id, name: id.capitalized, symbol: "sparkles", blurb: "", openApps: [], quitApps: [],
+                                      hideOthers: false, keepAwake: .off, tilingOn: false)
+            model.ctx.store.updateSettings { $0.modes.append(mode) }
+        }
+        model.settings = model.ctx.store.settings
+        return model
+    }
+
+    @Test func aFocusStartsItsModeAndStopsItWhenItEnds() async throws {
+        let model = try model()
+        await model.focusChanged(to: "custom-a")
+        #expect(model.modes.active?.modeID == "custom-a")
+        await model.focusChanged(to: nil)
+        #expect(model.modes.active == nil)
+    }
+
+    @Test func aModeTheUserChoseSinceIsLeftOn() async throws {
+        let model = try model()
+        await model.focusChanged(to: "custom-a")
+        await model.modes.toggle(model.settings.modes.first { $0.id == "custom-b" }!)
+        await model.focusChanged(to: nil)
+        #expect(model.modes.active?.modeID == "custom-b")
+    }
+}

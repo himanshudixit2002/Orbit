@@ -1,3 +1,4 @@
+import AppIntents
 import AppKit
 import OrbitPlatform
 import OrbitUI
@@ -70,6 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
             return
         }
+        // Siri's phrases name the user's modes: kept up to date as they change.
+        OrbitShortcuts.updateAppShortcutParameters()
+        Self.model.modesEdited = { OrbitShortcuts.updateAppShortcutParameters() }
         // Orbit lives in the menu bar: its Dock icon shows only while its main window is open.
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { _ in
             // Looked at once the window has gone. A minimised one still needs the Dock to come back from.

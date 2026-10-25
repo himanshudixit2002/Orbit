@@ -1,6 +1,21 @@
 import AppKit
 import OrbitCore
 import OrbitPlatform
+import OrbitShared
+
+extension AppModel: OrbitCommandHandling {
+    /// A Focus with an Orbit mode set came on (that mode starts) or ended: the mode it started stops,
+    /// unless the user has switched modes since.
+    public func focusChanged(to modeID: String?) async {
+        let key = "focusStartedMode"
+        if let modeID {
+            if await run(.startMode(modeID), source: .focus).ok { focusDefaults.set(modeID, forKey: key) }
+        } else if let started = focusDefaults.string(forKey: key) {
+            focusDefaults.removeObject(forKey: key)
+            if modes.active?.modeID == started { await run(.stopMode, source: .focus) }
+        }
+    }
+}
 
 extension AppModel {
     /// Runs a command from outside Orbit's window (a link, a Shortcut or Siri, a widget, Control Center,

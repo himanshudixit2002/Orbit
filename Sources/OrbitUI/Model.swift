@@ -65,6 +65,10 @@ public final class AppModel {
     /// The main window was asked for before Orbit could open windows.
     @ObservationIgnored var mainWindowWanted = false
     @ObservationIgnored var lastLink: (url: URL, at: Date)?
+    /// Remembers which mode a Focus started (tests use their own).
+    @ObservationIgnored var focusDefaults = UserDefaults.standard
+    /// Told when the user adds, edits or deletes a mode (Siri's phrases name them).
+    @ObservationIgnored public var modesEdited: (() -> Void)?
     /// The Dock and Finder as last read, so their page opens on real values straight away.
     var dockFinder: DockFinderReading?
     let appCatalog = AppCatalog()
@@ -118,6 +122,8 @@ public final class AppModel {
 
     public static func launch(mode: RunMode) -> AppModel {
         let model = AppModel(ctx: SystemContext.make(mode: mode))
+        // Shortcuts, Siri, Focus, widgets and Control Center reach Orbit through this.
+        OrbitBridge.handler = model
         let notifier = Notifier()
         notifier.model = model
         notifier.start()
@@ -673,6 +679,7 @@ public final class AppModel {
         }
         settings = ctx.store.settings
         publishSnapshot()
+        modesEdited?()
         show(Toast(ok: true, message: "Saved \(mode.name) mode.", journalID: nil))
     }
 
@@ -681,6 +688,7 @@ public final class AppModel {
         ctx.store.updateSettings { $0.modes.removeAll { $0.id == id } }
         settings = ctx.store.settings
         publishSnapshot()
+        modesEdited?()
         show(Toast(ok: true, message: "\(name) mode is deleted.", journalID: nil))
     }
 
