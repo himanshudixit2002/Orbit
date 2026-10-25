@@ -21,6 +21,7 @@ public struct OrbitSettings: Codable, Sendable, Equatable {
     public var hotKey: HotKeySetting?
     /// Doctor findings the user chose to ignore, by id.
     public var doctorIgnored: [String] = []
+    public var downloads = DownloadSettings()
 
     public init() {}
 

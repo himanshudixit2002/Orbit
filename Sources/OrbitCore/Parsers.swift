@@ -60,11 +60,14 @@ public struct SorterLog: Sendable, Equatable {
         public let date: Date
         public let file: String
         public let folder: String
+        /// Where it went, inside Downloads: "Documents/report (2).pdf".
+        public var destination: String
 
-        public init(date: Date, file: String, folder: String) {
+        public init(date: Date, file: String, folder: String, destination: String? = nil) {
             self.date = date
             self.file = file
             self.folder = folder
+            self.destination = destination ?? "\(folder)/\(file)"
         }
     }
 
@@ -99,7 +102,7 @@ public struct SorterLog: Sendable, Equatable {
             } else if let arrow = rest.range(of: " -> ", options: .backwards) {
                 let destination = rest[arrow.upperBound...]
                 let folder = destination.split(separator: "/").first.map(String.init) ?? "Other"
-                log.entries.append(Entry(date: date, file: String(rest[..<arrow.lowerBound]), folder: folder))
+                log.entries.append(Entry(date: date, file: String(rest[..<arrow.lowerBound]), folder: folder, destination: String(destination)))
             }
         }
         return log

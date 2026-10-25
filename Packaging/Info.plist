@@ -30,7 +30,7 @@
   <key>NSAppleEventsUsageDescription</key>
   <string>Orbit uses System Events to tuck the Mac's own menu bar away when you turn on the new one, and to add apps to your login items.</string>
   <key>NSDownloadsFolderUsageDescription</key>
-  <string>Orbit looks in Downloads only when you ask it to find old files you might want to clear.</string>
+  <string>Orbit sorts new downloads into folders by type, and finds old ones you might want to clear when you ask.</string>
   <key>NSDesktopFolderUsageDescription</key>
   <string>Orbit only uses the Desktop if you ask it to put your projects back there.</string>
   <key>NSDocumentsFolderUsageDescription</key>

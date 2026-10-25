@@ -4,7 +4,7 @@ import Foundation
 /// The config files Orbit writes, and how to tell whether someone has edited one since.
 public enum ManagedFile: String, Codable, CaseIterable, Sendable {
     case yabairc, bordersrc, sketchybarrc, sketchybarColors, karabiner, batTheme, batConfig, btopTheme,
-         lazygit, fastfetch, tmuxTheme
+         lazygit, fastfetch, tmuxTheme, sorterScript
 
     public func url(_ paths: Paths) -> URL {
         switch self {
@@ -19,6 +19,7 @@ public enum ManagedFile: String, Codable, CaseIterable, Sendable {
         case .lazygit: paths.lazygitConfig
         case .fastfetch: paths.fastfetchConfig
         case .tmuxTheme: paths.tmuxTheme
+        case .sorterScript: paths.sorterScript
         }
     }
 
@@ -34,6 +35,7 @@ public enum ManagedFile: String, Codable, CaseIterable, Sendable {
         case .lazygit: "Git app colours"
         case .fastfetch: "System splash colours"
         case .tmuxTheme: "Terminal window colours"
+        case .sorterScript: "Downloads sorter"
         }
     }
 
@@ -50,6 +52,7 @@ public enum ManagedFile: String, Codable, CaseIterable, Sendable {
         case .batConfig: ["e22d59f5ba023ed11ba781727fb7ccace7be1fd644aa0b36b675af0c0f108890"]
         case .lazygit: ["6c49af3dbf7ce9f4e9468d1859653775a20abea06d1d587d90c148be8ef01b55"]
         case .fastfetch: ["1f0c3b92d74d841337edee95cd127bb4462be47c0d87ae81883a59910a7ec53a"]
+        case .sorterScript: ["35951a697a700c8bc5ed13209802c4d5124e38db68288b2f26759681a17f99ec"]
         default: []
         }
     }

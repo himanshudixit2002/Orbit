@@ -108,6 +108,10 @@ public final class AppModel {
     let barFeeder: BarFeeder
     /// Keeps what the widgets and Control Center switches show up to date.
     let publisher: SnapshotPublisher
+    /// Sorts each download as soon as it's finished, while Orbit runs.
+    let instantSorter: InstantSorter
+    var sortingInstantly = false
+    @ObservationIgnored var sorterScriptChecked = false
     /// macOS notifications (only in the real app: they need its bundle).
     var notifier: Notifier?
     /// Helpers the watchdog says keep stopping, so each is announced once.
@@ -130,6 +134,7 @@ public final class AppModel {
         modes = ModesModel(ctx: ctx)
         cleanup = CleanupModel(ctx: ctx)
         barFeeder = BarFeeder(ctx: ctx)
+        instantSorter = InstantSorter(ctx: ctx)
         publisher = SnapshotPublisher(store: SharedStore(practice: ctx.mode == .practice, home: ctx.paths.home))
         modes.changed = { [weak self] in self?.publishSnapshot() }
     }
@@ -327,6 +332,7 @@ public final class AppModel {
         barFeeder.update(running: status.menuBar.run.isRunning, barPID: status.menuBar.run.pid, bar: settings.bar, palette: settings.palette)
         publishSnapshot()
         noticeNewAttention()
+        syncInstantSorting()
         showLoginStatus(await Task.detached { SMAppService.mainApp.status }.value)
     }
 
@@ -480,6 +486,7 @@ public final class AppModel {
     public func prepareToQuit() async {
         _ = await finishChanges(within: .seconds(10))
         await barFeeder.handBack()
+        await instantSorter.stop()
         if !isSnapshot { publisher.stopped() }
     }
 
@@ -555,6 +562,36 @@ public final class AppModel {
     }
 
     func setDownloads(_ on: Bool) { setFeature(.downloads, on: on) }
+
+    /// Instant sorting runs while the Downloads feature is on and the user wants it (live mode only).
+    func syncInstantSorting() {
+        let wanted = !isPractice && !isSnapshot && settings.downloads.instant && state(.downloads).isOn
+        let downloads = settings.downloads
+        if wanted != sortingInstantly { sortingInstantly = wanted }
+        // The hourly sorter learns to stand down while Orbit sorts (only if it's still Orbit's own script).
+        if wanted, !sorterScriptChecked {
+            sorterScriptChecked = true
+            let current = ctx.files.read(ctx.paths.sorterScript)
+            if current != Data(SorterScript.render(downloads).utf8),
+               ctx.store.registry.verdict(for: .sorterScript, current: current) == .safe {
+                perform("downloadsRules", "Updated the hourly Downloads sorter") { [actions] in
+                    try await actions.applyDownloads(downloads, policy: $0)
+                }
+            }
+        }
+        Task { [instantSorter] in
+            if wanted { await instantSorter.start(downloads); await instantSorter.update(downloads) } else { await instantSorter.stop() }
+        }
+    }
+
+    func applyDownloads(_ downloads: DownloadSettings) {
+        settings.downloads = downloads
+        perform("downloadsRules", "Changed how Downloads are sorted") { [actions] in try await actions.applyDownloads(downloads, policy: $0) }
+    }
+
+    func putBack(_ entry: SorterLog.Entry) {
+        perform("putBack-\(entry.destination)", "Put \(entry.file) back in Downloads", lane: false) { [actions] _ in actions.putBack(entry) }
+    }
 
     func sortDownloadsNow() {
         perform("sortNow", "Sorted Downloads", lane: false) { [actions] _ in await actions.sortDownloadsNow() }

@@ -135,6 +135,7 @@ struct FilesPage: View {
     @State private var tidyPlan: [TidyMove]?
     @State private var showTidy = false
     @State private var lookingAtDesktop = false
+    @State private var editingRules = false
 
     var log: SorterLog { model.status.downloads.log }
 
@@ -143,7 +144,9 @@ struct FilesPage: View {
         VStack(alignment: .leading, spacing: 18) {
             PageHeader(page: .files)
             FeatureCard(title: "Auto-sort Downloads",
-                        blurb: "Every hour, files you downloaded more than an hour ago go into folders by type: Documents, Images, Archives and more.",
+                        blurb: model.settings.downloads.instant
+                            ? "As soon as a download finishes, it goes into a folder by type: Documents, Images, Archives and more. An hourly pass catches anything Orbit misses."
+                            : "Every hour, files you downloaded more than an hour ago go into folders by type: Documents, Images, Archives and more.",
                         symbol: FeatureID.downloads.symbol, hue: .teal, state: model.state(.downloads),
                         isBusy: model.isBusy("downloads"), illustration: AnyView(SortIllustration()),
                         onToggle: { model.setDownloads($0) }, onFix: { model.fix(.downloads) }) {
@@ -156,13 +159,30 @@ struct FilesPage: View {
                             .buttonStyle(.glass)
                             .disabled(model.isBusy("sortNow"))
                     }
-                    ForEach(Array(log.entries.suffix(4).reversed().enumerated()), id: \.offset) { _, entry in
+                    SettingRow(title: "Sort as soon as they finish", detail: model.settings.downloads.instant
+                               ? "Each download moves \(model.settings.downloads.settleSeconds) seconds after it stops changing, while Orbit runs."
+                               : "Only the hourly pass, for files older than an hour.") {
+                        HStack(spacing: 10) {
+                            Button("Rules…") { editingRules = true }.buttonStyle(.glass)
+                            Toggle("Instant", isOn: Binding(get: { model.settings.downloads.instant }, set: { on in
+                                var downloads = model.settings.downloads
+                                downloads.instant = on
+                                model.applyDownloads(downloads)
+                            }))
+                            .toggleStyle(.switch).labelsHidden()
+                        }
+                    }
+                    ForEach(Array(log.entries.suffix(5).reversed().enumerated()), id: \.offset) { _, entry in
                         HStack(spacing: 8) {
                             Image(systemName: icon(entry.folder)).foregroundStyle(Hue.teal.top).frame(width: 18)
                             Text(entry.file).lineLimit(1).truncationMode(.middle)
                             Spacer()
                             Text("→ \(entry.folder)").foregroundStyle(.secondary)
                             Text(entry.date, style: .relative).font(.caption).foregroundStyle(.tertiary)
+                            Button("Put back") { model.putBack(entry) }
+                                .buttonStyle(.borderless)
+                                .font(.caption)
+                                .help("Move it back into Downloads, where neither sorter will move it again")
                         }
                         .font(.callout)
                     }
@@ -192,6 +212,9 @@ struct FilesPage: View {
                     .buttonStyle(.glassProminent)
                     .disabled(model.isBusy("tidyDesktop") || lookingAtDesktop)
                 }
+            }
+            .sheet(isPresented: $editingRules) {
+                DownloadRulesSheet().environment(model)
             }
             .sheet(isPresented: $showTidy) {
                 TidyPlanSheet(plan: tidyPlan).environment(model)
@@ -450,5 +473,71 @@ struct CleanupPage: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+/// Which kinds of file go to which folder in Downloads (the instant and the hourly sorter share these).
+struct DownloadRulesSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var downloads = DownloadSettings()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Sorting rules").font(.title2.weight(.semibold))
+            Text("Each folder in Downloads, and the file endings that go in it. Separate endings with spaces.")
+                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(spacing: 8) {
+                    ForEach($downloads.rules) { $rule in
+                        HStack(spacing: 10) {
+                            TextField("Folder", text: $rule.folder).textFieldStyle(.roundedBorder).frame(width: 140)
+                            TextField("pdf doc txt", text: Binding(get: { rule.extensions.joined(separator: " ") }, set: { text in
+                                rule.extensions = text.lowercased().split(whereSeparator: { $0 == " " || $0 == "," })
+                                    .map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: ".")) }.filter { !$0.isEmpty }
+                            }))
+                            .textFieldStyle(.roundedBorder)
+                            Button { downloads.rules.removeAll { $0.id == rule.id } } label: {
+                                Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Remove \(rule.folder)")
+                        }
+                    }
+                }
+            }
+            .frame(minHeight: 220)
+            HStack {
+                Button { downloads.rules.append(DownloadRule(folder: "New folder \(downloads.rules.count + 1)", extensions: [])) } label: {
+                    Label("Add a folder", systemImage: "plus")
+                }
+                .buttonStyle(.glass)
+                Spacer()
+                Text("Everything else goes to").foregroundStyle(.secondary)
+                TextField("Other", text: $downloads.otherFolder).textFieldStyle(.roundedBorder).frame(width: 120)
+            }
+            SettingRow(title: "Wait before moving", detail: "\(downloads.settleSeconds) seconds after a download stops changing") {
+                Slider(value: Binding(get: { Double(downloads.settleSeconds) }, set: { downloads.settleSeconds = Int($0) }), in: 5...120, step: 5)
+                    .frame(width: 220)
+            }
+            HStack {
+                Button("Use the original rules") { downloads.rules = DownloadRule.defaults; downloads.otherFolder = "Other" }
+                    .buttonStyle(.glass)
+                Spacer()
+                Button("Cancel") { dismiss() }.buttonStyle(.glass).keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    downloads.rules = downloads.rules.filter { !$0.folder.trimmingCharacters(in: .whitespaces).isEmpty }
+                    if downloads.otherFolder.trimmingCharacters(in: .whitespaces).isEmpty { downloads.otherFolder = "Other" }
+                    model.applyDownloads(downloads)
+                    dismiss()
+                }
+                .buttonStyle(.glassProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(downloads == model.settings.downloads)
+            }
+        }
+        .padding(24)
+        .frame(width: 640, height: 560)
+        .onAppear { downloads = model.settings.downloads }
     }
 }
