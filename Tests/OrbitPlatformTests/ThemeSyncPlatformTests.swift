@@ -86,3 +86,65 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: ctx.paths.warpTheme.path(percentEncoded: false)))
     }
 }
+
+@Suite struct WindowLayoutActionTests {
+    let windows = """
+    [{"id":1,"app":"Warp","title":"","space":1,"frame":{"x":4,"y":44,"w":954,"h":1032},"is-floating":false},
+     {"id":2,"app":"Antigravity IDE","title":"Orbit","space":1,"frame":{"x":962,"y":44,"w":954,"h":1032},"is-floating":false}]
+    """
+    let spaces = #"[{"index":1,"type":"bsp","is-visible":true}]"#
+
+    func fakeYabai() -> FakeSystem {
+        let system = FakeSystem()
+        system.load(Helper.yabai.label)
+        system.answer(CommandResult(status: 0, stdout: windows, ok: true)) { $0.arguments == ["-m", "query", "--windows"] }
+        system.answer(CommandResult(status: 0, stdout: spaces, ok: true)) { $0.arguments == ["-m", "query", "--spaces"] }
+        return system
+    }
+
+    @Test func savingAndArrangingWithUndo() async throws {
+        let system = fakeYabai()
+        let ctx = try sandboxContext(system)
+        let actions = Actions(ctx)
+        #expect(await actions.saveWindowLayout(name: "Coding").ok)
+        var layout = try #require(ctx.store.settings.windowLayouts.first)
+        #expect(layout.desktops.first?.windows.map(\.app) == ["Warp", "Antigravity IDE"])
+
+        // Saved with the IDE on the left: arranging swaps them; undo holds the arrangement from before.
+        layout.desktops[0].windows.reverse()
+        let outcome = await actions.arrangeWindows(layout)
+        #expect(outcome.ok)
+        #expect(system.ran("yabai", "-m", "window", "1", "--swap", "2"))
+        guard case .arrangeWindows(let before)? = outcome.undo.first else {
+            Issue.record("no undo snapshot")
+            return
+        }
+        #expect(before.desktops.first?.windows.map(\.app) == ["Warp", "Antigravity IDE"])
+        #expect(await actions.deleteWindowLayout(layout.id).ok)
+        #expect(ctx.store.settings.windowLayouts.isEmpty)
+    }
+
+    @Test func aDesktopGetsItsOwnStyleLiveAndInTheConfig() async throws {
+        let system = fakeYabai()
+        let ctx = try sandboxContext(system)
+        try FileManager.default.createDirectory(at: ctx.paths.yabairc.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(YabaiConfig.render(ctx.store.settings, barReserved: nil).utf8).write(to: ctx.paths.yabairc)
+        ctx.store.noteWritten(.yabairc, data: try Data(contentsOf: ctx.paths.yabairc))
+        let actions = Actions(ctx)
+        #expect(try await actions.setSpaceLayout(2, .stack).ok)
+        #expect(system.ran("yabai", "-m", "config", "--space", "2", "layout", "stack"))
+        #expect(try String(contentsOf: ctx.paths.yabairc, encoding: .utf8).contains("yabai -m config --space 2 layout stack"))
+        #expect(try await actions.setSpaceLayout(2, nil).ok)
+        #expect(system.ran("yabai", "-m", "config", "--space", "2", "layout", "bsp"))
+        #expect(ctx.store.settings.tiling.spaceLayouts.isEmpty)
+    }
+
+    @Test func withoutTilingNothingIsSavedOrMoved() async throws {
+        let ctx = try sandboxContext(FakeSystem())
+        let failing = FakeSystem()
+        failing.answer(CommandResult(status: 1, stderr: "yabai-msg: failed to connect", ok: false)) { $0.arguments.first == "-m" }
+        let actions = Actions(try sandboxContext(failing))
+        #expect(await !actions.saveWindowLayout(name: "Coding").ok)
+        #expect(ctx.store.settings.windowLayouts.isEmpty)
+    }
+}

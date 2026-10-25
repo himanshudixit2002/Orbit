@@ -21,6 +21,8 @@ public enum YabaiConfig {
         }
         let tiling = settings.tiling
         let floating = settings.floatingApps.map { Shell.insideDoubleQuotes(Shell.regexEscape($0)) }.joined(separator: "|")
+        let spaceLayouts = settings.tiling.spaceLayouts.sorted { $0.space < $1.space }
+            .map { "\nyabai -m config --space \($0.space) layout \($0.layout.rawValue)" }.joined()
         let edge = settings.bar.position == .top ? "below" : "above"
         let bar = barReserved.map {
             "# Keep windows \(edge) the menu bar (\(settings.bar.height)pt bar + \(settings.bar.yOffset)pt offset)\n"
@@ -37,7 +39,7 @@ public enum YabaiConfig {
         # put extra lines of your own in ~/.config/yabai/yabairc.local, which is read at the end.
         # Runs without disabling SIP, so it sticks to features that need no scripting addition.
 
-        \(config("layout", tiling.layout.rawValue))
+        \(config("layout", tiling.layout.rawValue))\(spaceLayouts)
         \(config("window_placement", tiling.newWindowsFirst ? "first_child" : "second_child"))
         \(config("split_ratio", String(format: "%.2f", tiling.splitRatio)))
         \(config("auto_balance", tiling.autoBalance ? "on" : "off"))

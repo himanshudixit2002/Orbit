@@ -621,6 +621,12 @@ public struct Actions: Sendable {
             case .brewService(let formula, let wasRunning):
                 let result = await ctx.run(Commands.brewService(wasRunning ? .start : .stop, formula, name: Doctor.serviceName(formula)))
                 if !result.ok { failures.append("\(Doctor.serviceName(formula)): \(result.failureMessage)") }
+            case .arrangeWindows(let layout):
+                if await isRunning(.yabai) {
+                    await arrange(layout)
+                } else {
+                    failures.append("window tiling isn't running, so the windows stayed where they are")
+                }
             case .restoreJSONKeys(let path, let values, let absent):
                 do {
                     var changes = values.mapValues { JSONKeyPatch.Change.set($0) }

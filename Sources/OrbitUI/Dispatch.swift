@@ -50,6 +50,16 @@ extension AppModel {
                 await actions.sortDownloadsNow()
             }
             return OrbitReply(ok: result.ok, message: result.message)
+        case .arrangeWindows(let name):
+            guard let layout = settings.windowLayouts.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
+                let saved = settings.windowLayouts.map(\.name)
+                return OrbitReply(ok: false, message: saved.isEmpty ? "No window layouts are saved yet. Save one on the Windows page."
+                                                                    : "There's no layout called \"\(name)\". Saved: \(saved.joined(separator: ", ")).")
+            }
+            let result = await performNow("arrange", "Arranged the windows as \"\(layout.name)\"", quiet: source.isBackground) { [actions] _ in
+                await actions.arrangeWindows(layout)
+            }
+            return OrbitReply(ok: result.ok, message: result.message)
         case .checkStatus:
             await refresh(deep: true)
             return statusSummary()

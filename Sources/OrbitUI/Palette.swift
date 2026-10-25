@@ -41,6 +41,11 @@ extension AppModel {
             items.append(PaletteItem(id: "theme-\(palette.id.rawValue)", title: "Switch to \(palette.name)", subtitle: palette.tagline,
                                      symbol: "paintpalette.fill", keywords: "theme colours colors look", action: command(.setTheme(palette.id))))
         }
+        for layout in settings.windowLayouts {
+            items.append(PaletteItem(id: "arrange-\(layout.id)", title: "Arrange windows: \(layout.name)", subtitle: layout.summary,
+                                     symbol: "rectangle.3.group", keywords: "layout windows arrange restore",
+                                     action: command(.arrangeWindows(layout.name))))
+        }
         items.append(PaletteItem(id: "sort", title: "Sort Downloads now", subtitle: "Into folders by type", symbol: "arrow.down.doc.fill",
                                  keywords: "downloads tidy files", action: command(.sortDownloads)))
         items.append(PaletteItem(id: "check", title: "Check everything again", subtitle: "A fresh, thorough look", symbol: "stethoscope",

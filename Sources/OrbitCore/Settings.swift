@@ -24,6 +24,8 @@ public struct OrbitSettings: Codable, Sendable, Equatable {
     public var downloads = DownloadSettings()
     /// Other apps that wear the theme too.
     public var themeSync = ThemeSyncSettings()
+    /// Window arrangements saved to put back later.
+    public var windowLayouts: [WindowLayout] = []
 
     public init() {}
 
@@ -111,8 +113,32 @@ public struct TilingSettings: Codable, Sendable, Equatable {
     public var autoBalance = false
     public var mouseFollowsFocus = false
     public var focusFollowsMouse: FocusFollowsMouse = .off
+    /// Desktops with a window style of their own.
+    public var spaceLayouts: [SpaceLayout] = []
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case layout, gap, padding, newWindowsFirst, splitRatio, autoBalance, mouseFollowsFocus, focusFollowsMouse, spaceLayouts
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        layout = c.value(.layout, or: .tiles)
+        gap = c.value(.gap, or: 10)
+        padding = c.value(.padding, or: 12)
+        newWindowsFirst = c.value(.newWindowsFirst, or: false)
+        splitRatio = c.value(.splitRatio, or: 0.5)
+        autoBalance = c.value(.autoBalance, or: false)
+        mouseFollowsFocus = c.value(.mouseFollowsFocus, or: false)
+        focusFollowsMouse = c.value(.focusFollowsMouse, or: .off)
+        spaceLayouts = c.value(.spaceLayouts, or: [Lenient<SpaceLayout>]()).compactMap(\.value)
+    }
+
+    /// The style a desktop uses: its own, or the shared one.
+    public func layout(of space: Int) -> TilingLayout {
+        spaceLayouts.first { $0.space == space }?.layout ?? layout
+    }
 }
 
 public enum BorderStyle: String, Codable, CaseIterable, Sendable {

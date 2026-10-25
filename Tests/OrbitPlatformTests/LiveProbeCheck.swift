@@ -114,6 +114,20 @@ struct LiveProbeCheck {
         try? FileManager.default.trashItem(at: dir, resultingItemURL: nil)
     }
 
+    /// The windows on this Mac as a saved layout, and what putting it straight back would do (it only reads).
+    @Test func windowLayoutOnThisMac() async throws {
+        let actions = Actions(SystemContext.make(mode: .live))
+        let start = ContinuousClock.now
+        guard let now = await actions.windowsNow() else {
+            print("PROBE windows: tiling isn't running")
+            return
+        }
+        let layout = WindowLayout.capture(name: "Now", windows: now.windows, spaces: now.spaces)
+        print("PROBE windows: read in \(ContinuousClock.now - start): \(layout.summary)")
+        let plan = LayoutPlanner.plan(layout, windows: now.windows, spaces: now.spaces)
+        print("PROBE windows: putting it back needs \(plan.steps.count) steps, notes \(plan.notes)")
+    }
+
     /// What theme sync would change on this Mac (it only reads).
     @Test func themeSyncOnThisMac() throws {
         let ctx = SystemContext.make(mode: .live)

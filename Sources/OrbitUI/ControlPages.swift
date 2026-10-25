@@ -16,6 +16,7 @@ struct WindowsPage: View {
                         onToggle: { model.setTiling($0) }, onFix: { model.fix(.tiling) }) {
                 TilingControls()
             }
+            if model.state(.tiling).isOn { WindowLayoutsPanel() }
             FeatureCard(title: "Glow around the window you're using",
                         blurb: "A soft coloured outline shows which window is active, so you never type into the wrong one.",
                         symbol: FeatureID.glow.symbol, hue: .purple, state: model.state(.glow), poweredBy: "JankyBorders",
@@ -37,6 +38,85 @@ struct WindowsPage: View {
                 }
             }
         }
+    }
+}
+
+/// Desktops with a style of their own, and saved window arrangements.
+struct WindowLayoutsPanel: View {
+    @Environment(AppModel.self) private var model
+    @State private var spaces: [YabaiSpace] = []
+    @State private var name = ""
+
+    var desktops: [Int] {
+        let count = max(spaces.map(\.index).max() ?? 0, model.settings.tiling.spaceLayouts.map(\.space).max() ?? 0)
+        return count == 0 ? [] : Array(1...count)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SectionTitle(text: "Each desktop")
+            GlassPanel {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Give a desktop its own window style; the rest keep the one above.").foregroundStyle(.secondary)
+                    if desktops.isEmpty { Text("Looking for desktops…").foregroundStyle(.tertiary) }
+                    ForEach(desktops, id: \.self) { space in
+                        SettingRow(title: "Desktop \(space)", detail: spaces.first { $0.index == space }?.isVisible == true ? "On screen now" : "") {
+                            Picker("Desktop \(space)", selection: Binding(
+                                get: { model.settings.tiling.spaceLayouts.first { $0.space == space }?.layout },
+                                set: { model.setSpaceLayout(space, $0) })) {
+                                Text("Same as the others").tag(TilingLayout?.none)
+                                ForEach(TilingLayout.allCases) { Text($0.title).tag(Optional($0)) }
+                            }
+                            .labelsHidden().frame(width: 200)
+                            .disabled(model.isBusy("spaceLayout-\(space)"))
+                        }
+                    }
+                }
+            }
+            SectionTitle(text: "Saved arrangements")
+            GlassPanel {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        TextField("Name it, like Coding", text: $name).textFieldStyle(.roundedBorder).frame(maxWidth: 240)
+                            .onSubmit(save)
+                        Button("Save how the windows sit now", action: save)
+                            .buttonStyle(.glassProminent)
+                            .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || model.isBusy("saveLayout"))
+                    }
+                    Text("Arranging puts each window back on its own desktop: macOS doesn't let Orbit move windows between desktops. Give an arrangement a Caps Lock key on the Keyboard page.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(model.settings.windowLayouts) { layout in
+                        HStack(spacing: 10) {
+                            Image(systemName: "rectangle.3.group").frame(width: 22).foregroundStyle(Hue.cyan.top)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(layout.name).font(.body.weight(.medium))
+                                Text(layout.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            Button("Arrange") { Task { await model.run(.arrangeWindows(layout.name), source: .window) } }
+                                .buttonStyle(.glass)
+                                .disabled(model.isBusy("arrange"))
+                            Menu {
+                                Button("Save the windows as they are now") { model.saveWindowLayout(layout.name) }
+                                Button("Delete", role: .destructive) { model.deleteWindowLayout(layout) }
+                            } label: { Image(systemName: "ellipsis.circle") }
+                                .menuStyle(.button).buttonStyle(.borderless).fixedSize()
+                                .accessibilityLabel("More for \(layout.name)")
+                        }
+                    }
+                }
+            }
+        }
+        .task(id: model.journal.count) {
+            if let now = await model.actions.windowsNow() { spaces = now.spaces }
+        }
+    }
+
+    func save() {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        model.saveWindowLayout(trimmed)
+        name = ""
     }
 }
 
@@ -384,7 +464,7 @@ struct KeyboardPage: View {
                     VStack(spacing: 6) {
                         ForEach($keyboard.hyperApps) { $binding in
                             HyperKeyRow(binding: $binding, freeKeys: freeKeys(keeping: binding.key), apps: appChoices(including: binding),
-                                        modes: model.settings.modes, save: { model.applyKeyboard(keyboard) }) {
+                                        modes: model.settings.modes, layouts: model.settings.windowLayouts.map(\.name), save: { model.applyKeyboard(keyboard) }) {
                                 keyboard.hyperApps.removeAll { $0.key == binding.key }
                                 model.applyKeyboard(keyboard)
                             }
@@ -463,6 +543,7 @@ struct HyperKeyRow: View {
     let freeKeys: [String]
     let apps: [InstalledApp]
     let modes: [ModeDefinition]
+    var layouts: [String] = []
     let save: () -> Void
     let remove: () -> Void
     @State private var website = ""
@@ -580,6 +661,7 @@ struct HyperKeyRow: View {
          ("Glow on or off", .toggleFeature(.glow)), ("Menu bar on or off", .toggleFeature(.menuBar)), ("Sort Downloads", .sortDownloads),
          ("Check everything", .checkStatus), ("Stop the mode", .stopMode)]
             + modes.map { ("\($0.name) mode on or off", OrbitCommand.toggleMode($0.id)) }
+            + layouts.map { ("Arrange windows: \($0)", OrbitCommand.arrangeWindows($0)) }
     }
 }
 

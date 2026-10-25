@@ -10,6 +10,8 @@ public enum OrbitCommand: Codable, Sendable, Hashable {
     case stopMode
     case toggleMode(String)
     case sortDownloads
+    /// Put the windows back as a saved layout has them (by its name).
+    case arrangeWindows(String)
     /// A fresh, thorough check of everything.
     case checkStatus
     case open(OrbitDestination)
@@ -24,6 +26,7 @@ public enum OrbitCommand: Codable, Sendable, Hashable {
         case .toggleMode(let id): "switch the \(id) mode on or off"
         case .stopMode: "stop the mode that's on"
         case .sortDownloads: "sort your Downloads folder"
+        case .arrangeWindows(let name): "arrange the windows as \"\(name)\""
         case .checkStatus: "check everything"
         case .open(let destination):
             switch destination {
@@ -80,6 +83,7 @@ public struct OrbitReply: Sendable, Equatable {
 ///     orbit://page/monitor   orbit://setup   orbit://panel   orbit://palette
 ///     orbit://toggle/tiling   orbit://on/glow   orbit://off/menuBar
 ///     orbit://theme/nord   orbit://mode/focus   orbit://mode/stop   orbit://sort-downloads   orbit://check
+///     orbit://arrange/Coding
 public enum OrbitLink {
     public static let schemes: Set<String> = ["orbit", "orbitdev"]
 
@@ -99,6 +103,9 @@ public enum OrbitLink {
             guard let argument, !argument.isEmpty else { return nil }
             return argument == "stop" ? .stopMode : .toggleMode(argument)
         case "sort-downloads": return .sortDownloads
+        case "arrange":
+            guard let argument, !argument.isEmpty else { return nil }
+            return .arrangeWindows(argument)
         case "check": return .checkStatus
         default: return nil
         }
@@ -122,6 +129,7 @@ public enum OrbitLink {
         case .toggleMode(let id), .startMode(let id): id == "stop" ? nil : "mode/\(id)"
         case .stopMode: "mode/stop"
         case .sortDownloads: "sort-downloads"
+        case .arrangeWindows(let name): name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(["/"])).map { "arrange/\($0)" }
         case .checkStatus: "check"
         }
         let query = token.map { command.showsOrbit ? "" : "?token=\($0)" } ?? ""

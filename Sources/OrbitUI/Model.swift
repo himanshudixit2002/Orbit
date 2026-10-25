@@ -608,6 +608,21 @@ public final class AppModel {
 
     func setGlow(_ on: Bool) { setFeature(.glow, on: on) }
 
+    func setSpaceLayout(_ space: Int, _ layout: TilingLayout?) {
+        let title = layout.map { "Desktop \(space) uses \($0.title.lowercased()) windows" } ?? "Desktop \(space) uses the shared window style"
+        perform("spaceLayout-\(space)", title) { [actions] in try await actions.setSpaceLayout(space, layout, policy: $0) }
+    }
+
+    func saveWindowLayout(_ name: String) {
+        perform("saveLayout", "Saved the window arrangement \"\(name)\"") { [actions] _ in await actions.saveWindowLayout(name: name) }
+    }
+
+    func deleteWindowLayout(_ layout: WindowLayout) {
+        perform("deleteLayout-\(layout.id)", "Deleted the window arrangement \"\(layout.name)\"") { [actions] _ in
+            await actions.deleteWindowLayout(layout.id)
+        }
+    }
+
     func applyFloatingApps(_ apps: [String]) {
         settings.floatingApps = apps
         perform("floatingApps", "Changed which apps float") { [actions] in try await actions.applyFloatingApps(apps, policy: $0) }

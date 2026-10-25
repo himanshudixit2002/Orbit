@@ -153,6 +153,33 @@ public enum Commands {
                 summary: "\(verb.rawValue.capitalized) the window shortcuts", timeout: 15, okStatuses: [0, 1])
     }
 
+    public static func yabaiQueryWindows() -> Command {
+        Command(Tool.yabai, ["-m", "query", "--windows"], effect: .readOnly, summary: "Ask window tiling where the windows are", timeout: 3)
+    }
+
+    public static func yabaiQuerySpaces() -> Command {
+        Command(Tool.yabai, ["-m", "query", "--spaces"], effect: .readOnly, summary: "Ask window tiling about the desktops", timeout: 3)
+    }
+
+    /// One desktop's window style, live.
+    public static func yabaiSpaceLayout(_ space: Int, _ layout: TilingLayout) -> Command {
+        Command(Tool.yabai, ["-m", "config", "--space", "\(space)", "layout", layout.rawValue], effect: .service,
+                summary: "Use \(layout.title.lowercased()) windows on desktop \(space)", timeout: 3)
+    }
+
+    /// One step of putting a window layout back. Windows can have closed since: that's not a failure.
+    public static func arrange(_ step: LayoutStep) -> Command {
+        let (arguments, summary): ([String], String) = switch step {
+        case .spaceLayout(let space, let layout):
+            (["-m", "config", "--space", "\(space)", "layout", layout.rawValue], "Use \(layout.title.lowercased()) windows on desktop \(space)")
+        case .toggleFloat(let window): (["-m", "window", "\(window)", "--toggle", "float"], "Float or tile a window")
+        case .move(let window, let x, let y): (["-m", "window", "\(window)", "--move", "abs:\(Int(x)):\(Int(y))"], "Move a window")
+        case .resize(let window, let w, let h): (["-m", "window", "\(window)", "--resize", "abs:\(Int(w)):\(Int(h))"], "Resize a window")
+        case .swap(let a, let b): (["-m", "window", "\(a)", "--swap", "\(b)"], "Swap two windows")
+        }
+        return Command(Tool.yabai, arguments, effect: .service, summary: summary, timeout: 3, okStatuses: [0, 1])
+    }
+
     public static func yabaiQueryDisplays() -> Command {
         Command(Tool.yabai, ["-m", "query", "--displays"], effect: .readOnly,
                 summary: "Ask window tiling which displays it sees", timeout: 3)
