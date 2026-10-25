@@ -8,7 +8,7 @@ import UserNotifications
 @MainActor
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     enum Kind: String, CaseIterable {
-        case failed, keepsStopping, attention, changed, edited, lowDisk
+        case failed, keepsStopping, attention, changed, edited, lowDisk, modeSchedule
 
         /// The button that does something about it (Open Orbit is always there too).
         var act: String? {
@@ -18,6 +18,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             case .changed: "Undo"
             case .edited: "Review"
             case .lowDisk: "Clean Up"
+            case .modeSchedule: "Start"
             case .keepsStopping: nil
             }
         }
@@ -43,7 +44,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     @discardableResult
     func send(_ kind: Kind, key: String, title: String, body: String, page: Page? = nil, every: TimeInterval = 600,
               act: (() -> Void)? = nil) -> Bool {
-        if NSApp.isActive, NSApp.keyWindow?.isVisible == true { return false }
+        // Orbit's window says it itself, except a schedule asking first: that question is for now.
+        if kind != .modeSchedule, NSApp.isActive, NSApp.keyWindow?.isVisible == true { return false }
         let now = Date()
         guard NoticePolicy.allows(key: key, kind: kind.rawValue, sent: sent, now: now, every: every) else { return false }
         sent.removeAll { now.timeIntervalSince($0.at) > max(3600, every) }
@@ -70,6 +72,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// Asks macOS (it shows its own question) to show Orbit's notices as banners.
     func askForBanners() async -> Bool {
         (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+    }
+
+    /// A schedule's question shows as a banner even with Orbit in front.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        notification.request.content.categoryIdentifier == Kind.modeSchedule.rawValue ? [.banner, .list, .sound] : [.list]
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

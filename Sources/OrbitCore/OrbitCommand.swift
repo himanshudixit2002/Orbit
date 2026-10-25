@@ -52,12 +52,12 @@ public enum OrbitDestination: Codable, Sendable, Hashable {
 /// Where a command came from. Anything but Orbit's own window runs without asking: it never opens
 /// System Settings or a sheet by itself, and says what's needed instead.
 public enum CommandSource: String, Codable, Sendable {
-    case window, panel, link, shortcut, widget, control, hotkey, palette, focus
+    case window, panel, link, shortcut, widget, control, hotkey, palette, focus, schedule
 
     public var isBackground: Bool {
         switch self {
         case .window, .panel, .palette: false
-        case .link, .shortcut, .widget, .control, .hotkey, .focus: true
+        case .link, .shortcut, .widget, .control, .hotkey, .focus, .schedule: true
         }
     }
 }

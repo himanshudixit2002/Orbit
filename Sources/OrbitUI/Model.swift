@@ -67,6 +67,8 @@ public final class AppModel {
     /// The main window was asked for before Orbit could open windows.
     @ObservationIgnored var mainWindowWanted = false
     @ObservationIgnored var lastLink: (url: URL, at: Date)?
+    /// Wakes up for the next thing a mode does by itself.
+    @ObservationIgnored var modeAlarm: Task<Void, Never>?
     /// Asks about a link without Orbit's token (tests answer for the user).
     @ObservationIgnored var confirmLink: @MainActor (OrbitCommand) -> Bool = AppModel.askAboutLink
     /// Remembers which mode a Focus started (tests use their own).
@@ -136,7 +138,12 @@ public final class AppModel {
         barFeeder = BarFeeder(ctx: ctx)
         instantSorter = InstantSorter(ctx: ctx)
         publisher = SnapshotPublisher(store: SharedStore(practice: ctx.mode == .practice, home: ctx.paths.home))
-        modes.changed = { [weak self] in self?.publishSnapshot() }
+        modes.changed = { [weak self] record in
+            self?.publishSnapshot()
+            self?.armModeAlarm()
+            // What a mode couldn't do (a hand-edited file it left alone, say) is said once it's on.
+            if let notes = record?.notes, !notes.isEmpty { self?.show(Toast(ok: false, message: notes.joined(separator: " "), journalID: nil)) }
+        }
     }
 
     public static func launch(mode: RunMode) -> AppModel {
@@ -167,6 +174,7 @@ public final class AppModel {
 
     func start() async {
         modes.resume()
+        armModeAlarm()
         // Low on disk: a notice at most once a day.
         Task { [weak self] in
             while !Task.isCancelled {
@@ -255,8 +263,15 @@ public final class AppModel {
                 barFeeder.setPaused(paused)
             })
         }
+        // A schedule is wall-clock time: a changed clock or time zone moves its alarm.
+        for name in [Notification.Name.NSSystemClockDidChange, .NSSystemTimeZoneDidChange] {
+            workspaceObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.armModeAlarm() }
+            })
+        }
         workspaceObservers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
+                self?.armModeAlarm()
                 // Helpers are often still starting just after waking: judge nothing for a moment.
                 self?.watchdog.hold(for: 30)
                 self?.requestRefresh(after: .seconds(5))
@@ -511,6 +526,43 @@ public final class AppModel {
         publisher.publish(makeSnapshot())
     }
 
+    // MARK: Mode timers and schedules
+
+    /// One alarm for the next thing a mode does by itself, set again whenever that could have moved:
+    /// a mode going on or off, modes edited, the Mac waking, the clock or time zone changing.
+    func armModeAlarm(now: Date = Date()) {
+        modeAlarm?.cancel()
+        guard !isSnapshot else { return }
+        let active = modes.active.map { ModeAlarm.Active(modeID: $0.modeID, started: $0.started, endsAt: $0.endsAt, bySchedule: $0.bySchedule) }
+        guard let alarm = ModeAlarm.next(after: now, modes: settings.modes, active: active) else { return }
+        modeAlarm = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(1, alarm.date.timeIntervalSinceNow)), tolerance: .seconds(5))
+            guard !Task.isCancelled else { return }
+            await self?.alarmFired(alarm)
+            self?.armModeAlarm()
+        }
+    }
+
+    func alarmFired(_ alarm: ModeAlarm) async {
+        switch alarm {
+        case .stop(let id, _, let reason):
+            guard modes.active?.modeID == id else { return }
+            let name = settings.modes.first { $0.id == id }?.name ?? id
+            await modes.stop()
+            ctx.activity.record(ActivityRecord(.change, "Switched off \(name) mode", detail: reason.capitalizedFirst + "."))
+        case .start(let id, _, let askFirst):
+            guard let mode = settings.modes.first(where: { $0.id == id }), modes.active?.modeID != id else { return }
+            if askFirst {
+                notifier?.send(.modeSchedule, key: "schedule \(id)", title: "Start \(mode.name) mode?",
+                               body: "It's time for \(mode.name) mode. \(mode.blurb)", every: 300) { [weak self] in
+                    Task { await self?.modes.toggle(mode, bySchedule: true) }
+                }
+            } else {
+                await modes.toggle(mode, bySchedule: true)
+            }
+        }
+    }
+
     /// Whether a change is under way (quitting waits for it).
     public var isChanging: Bool { !ctx.lane.isIdle }
 
@@ -755,6 +807,7 @@ public final class AppModel {
                 }
             }
             modesEdited?()
+            armModeAlarm()
         }
     }
 
@@ -765,6 +818,7 @@ public final class AppModel {
                 actions.editSettings("\(name) mode is deleted.") { $0.modes.removeAll { $0.id == id } }
             }
             modesEdited?()
+            armModeAlarm()
         }
     }
 

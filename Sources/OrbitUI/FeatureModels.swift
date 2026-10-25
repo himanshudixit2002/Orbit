@@ -57,8 +57,8 @@ final class ModesModel {
     @ObservationIgnored lazy var engine = ModeEngine(ctx: ctx)
     var active: ModeRecord?
     var working: String?
-    /// Told when a mode goes on or off.
-    @ObservationIgnored var changed: (() -> Void)?
+    /// Told when a mode goes on or off (with the record of one that went on).
+    @ObservationIgnored var changed: ((ModeRecord?) -> Void)?
 
     init(ctx: SystemContext) {
         self.ctx = ctx
@@ -76,7 +76,7 @@ final class ModesModel {
         ctx.store.settings.modes.first { $0.id == record.modeID }?.name ?? record.modeID.capitalizedFirst
     }
 
-    func toggle(_ mode: ModeDefinition) async {
+    func toggle(_ mode: ModeDefinition, bySchedule: Bool = false) async {
         // One mode change at a time: another one mid-way would lose this one's record of what to put back.
         guard working == nil else { return }
         working = mode.id
@@ -88,12 +88,12 @@ final class ModesModel {
         }
         // Saved as soon as it's on, so it outlives Orbit quitting.
         active = await ctx.lane.run("\(mode.name) mode") { [engine, store = ctx.store] in
-            let record = await engine.apply(mode)
+            let record = await engine.apply(mode, bySchedule: bySchedule)
             store.setActiveMode(record)
             return record
         }
-        ctx.activity.record(ActivityRecord(.change, "Switched on \(mode.name) mode"))
-        changed?()
+        ctx.activity.record(ActivityRecord(.change, "Switched on \(mode.name) mode\(bySchedule ? " (scheduled)" : "")"))
+        changed?(active)
     }
 
     func stop() async {
@@ -111,7 +111,7 @@ final class ModesModel {
         }
         active = nil
         ctx.activity.record(ActivityRecord(.change, "Switched off \(name) mode"))
-        changed?()
+        changed?(nil)
     }
 }
 

@@ -337,12 +337,29 @@ struct ModeEditor: View {
                                  apps: $mode.quitApps, installed: model.appCatalog.apps)
                     }
                     GlassPanel {
+                        LinkChips(links: $mode.urls)
+                    }
+                    GlassPanel {
                         VStack(spacing: 12) {
-                            SettingRow(title: "Hide other windows", detail: "Everything except the app you're using.") {
+                            SettingRow(title: "Hide other windows", detail: "Everything except the app you're using and the ones it opens.") {
                                 Toggle("Hide other windows", isOn: $mode.hideOthers).toggleStyle(.switch).labelsHidden()
                             }
-                            SettingRow(title: "Turn on window tiling") {
-                                Toggle("Turn on window tiling", isOn: $mode.tilingOn).toggleStyle(.switch).labelsHidden()
+                            ModeSwitchRow(title: "Window tiling", value: $mode.tiling)
+                            SettingRow(title: "Window style", detail: "While it's on") {
+                                Picker("Window style", selection: $mode.layout) {
+                                    Text("Leave").tag(TilingLayout?.none)
+                                    ForEach(TilingLayout.allCases) { Text($0.title).tag(Optional($0)) }
+                                }
+                                .labelsHidden().frame(width: 200)
+                            }
+                            ModeSwitchRow(title: "Window glow", value: $mode.glow)
+                            ModeSwitchRow(title: "New menu bar", value: $mode.menuBar)
+                            SettingRow(title: "Theme", detail: "Switched back when the mode ends") {
+                                Picker("Theme", selection: $mode.theme) {
+                                    Text("Leave").tag(ThemeID?.none)
+                                    ForEach(Palette.all) { Text($0.name).tag(Optional($0.id)) }
+                                }
+                                .labelsHidden().frame(width: 200)
                             }
                             SettingRow(title: "While it's on") {
                                 Picker("While it's on", selection: $mode.keepAwake) {
@@ -352,8 +369,20 @@ struct ModeEditor: View {
                                 .labelsHidden()
                                 .frame(width: 430)
                             }
+                            SettingRow(title: "Switch itself off", detail: "After a while, so a mode can't be forgotten") {
+                                Picker("Timer", selection: $mode.timerMinutes) {
+                                    Text("Never").tag(Int?.none)
+                                    ForEach([25, 50, 90, 120, 240], id: \.self) { Text("After \($0 >= 60 && $0 % 60 == 0 ? "\($0 / 60) h" : "\($0) min")").tag(Optional($0)) }
+                                }
+                                .labelsHidden().frame(width: 200)
+                            }
+                            SettingRow(title: "Run a shortcut", detail: "From the Shortcuts app, by its name, when the mode starts") {
+                                TextField("Shortcut name", text: Binding(get: { mode.shortcut ?? "" }, set: { mode.shortcut = $0.isEmpty ? nil : $0 }))
+                                    .textFieldStyle(.roundedBorder).frame(width: 220)
+                            }
                         }
                     }
+                    GlassPanel { ModeScheduleEditor(schedule: $mode.schedule) }
                 }
             }
             HStack {
@@ -392,5 +421,143 @@ struct ModeEditor: View {
                 dismiss()
             }
         }
+    }
+}
+
+/// Leave, On or Off: what a mode does to one switch.
+struct ModeSwitchRow: View {
+    let title: String
+    @Binding var value: ModeSwitch
+
+    var body: some View {
+        SettingRow(title: title, detail: "While it's on") {
+            Picker(title, selection: $value) {
+                ForEach(ModeSwitch.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented).labelsHidden().frame(width: 200)
+        }
+    }
+}
+
+/// When a mode starts by itself: days, a start and an end, and whether to ask first.
+struct ModeScheduleEditor: View {
+    @Binding var schedule: ModeSchedule?
+
+    var body: some View {
+        let current = schedule ?? ModeSchedule()
+        VStack(alignment: .leading, spacing: 12) {
+            SettingRow(title: "Start by itself", detail: current.enabled ? "On the days and at the time below" : "Off") {
+                Toggle("Schedule", isOn: Binding(get: { current.enabled }, set: { on in
+                    var changed = current
+                    changed.enabled = on
+                    schedule = changed
+                })).toggleStyle(.switch).labelsHidden()
+            }
+            if current.enabled {
+                HStack(spacing: 6) {
+                    ForEach(Array(Calendar.current.veryShortWeekdaySymbols.enumerated()), id: \.offset) { index, symbol in
+                        let day = index + 1
+                        Toggle(symbol, isOn: Binding(get: { current.weekdays.contains(day) }, set: { on in
+                            var changed = current
+                            if on { changed.weekdays.insert(day) } else { changed.weekdays.remove(day) }
+                            schedule = changed
+                        }))
+                        .toggleStyle(.button)
+                        .buttonStyle(.glass)
+                        .accessibilityLabel(Calendar.current.weekdaySymbols[index])
+                    }
+                }
+                SettingRow(title: "Starts at") {
+                    DatePicker("Starts at", selection: time(\.start), displayedComponents: .hourAndMinute).labelsHidden()
+                }
+                SettingRow(title: "Stops at", detail: current.end == nil ? "It stays on until you switch it off" : nil) {
+                    HStack {
+                        if current.end != nil {
+                            DatePicker("Stops at", selection: endTime, displayedComponents: .hourAndMinute).labelsHidden()
+                        }
+                        Toggle("Stops", isOn: Binding(get: { current.end != nil }, set: { on in
+                            var changed = current
+                            changed.end = on ? min(current.start + 8 * 60, 23 * 60 + 59) : nil
+                            schedule = changed
+                        })).toggleStyle(.switch).labelsHidden()
+                    }
+                }
+                SettingRow(title: "Ask me first", detail: "A notification asks before it starts") {
+                    Toggle("Ask first", isOn: Binding(get: { current.askFirst }, set: { on in
+                        var changed = current
+                        changed.askFirst = on
+                        schedule = changed
+                    })).toggleStyle(.switch).labelsHidden()
+                }
+            }
+        }
+    }
+
+    func date(_ minutes: Int) -> Date {
+        Calendar.current.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: Date()) ?? Date()
+    }
+
+    func minutes(_ date: Date) -> Int {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+    }
+
+    func time(_ keyPath: WritableKeyPath<ModeSchedule, Int>) -> Binding<Date> {
+        Binding(get: { date((schedule ?? ModeSchedule())[keyPath: keyPath]) }, set: { new in
+            var changed = schedule ?? ModeSchedule()
+            changed[keyPath: keyPath] = minutes(new)
+            schedule = changed
+        })
+    }
+
+    var endTime: Binding<Date> {
+        Binding(get: { date((schedule ?? ModeSchedule()).end ?? 18 * 60) }, set: { new in
+            var changed = schedule ?? ModeSchedule()
+            changed.end = minutes(new)
+            schedule = changed
+        })
+    }
+}
+
+/// Websites a mode opens: chips to remove, a field to add one.
+struct LinkChips: View {
+    @Binding var links: [String]
+    @State private var typing = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Opens these websites").font(.headline)
+            Text("They open in your browser when the mode starts.").font(.caption).foregroundStyle(.secondary)
+            if !links.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(links, id: \.self) { link in
+                        HStack(spacing: 6) {
+                            Image(systemName: "link").foregroundStyle(.secondary)
+                            Text(URL(string: link)?.host() ?? link).lineLimit(1)
+                            Button { links.removeAll { $0 == link } } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove \(link)")
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(.background.opacity(0.5), in: Capsule())
+                        .help(link)
+                    }
+                }
+            }
+            HStack {
+                TextField("https://…", text: $typing).textFieldStyle(.roundedBorder).onSubmit(add)
+                Button("Add", action: add).buttonStyle(.glass).disabled(typing.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    func add() {
+        let trimmed = typing.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let link = trimmed.contains("://") ? trimmed : "https://" + trimmed
+        if !links.contains(link) { links.append(link) }
+        typing = ""
     }
 }

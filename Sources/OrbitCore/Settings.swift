@@ -238,6 +238,64 @@ public enum KeepAwake: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// Something a mode can switch while it's on: on, off, or left as it is.
+public enum ModeSwitch: String, Codable, CaseIterable, Sendable {
+    case leave, on, off
+
+    public var title: String {
+        switch self {
+        case .leave: "Leave"
+        case .on: "On"
+        case .off: "Off"
+        }
+    }
+}
+
+/// When a mode starts by itself, and (optionally) stops.
+public struct ModeSchedule: Codable, Sendable, Equatable {
+    public var enabled = false
+    /// Calendar weekdays: 1 is Sunday, 7 Saturday.
+    public var weekdays: Set<Int> = [2, 3, 4, 5, 6]
+    /// Minutes after midnight.
+    public var start = 9 * 60
+    /// When it stops by itself; nil to leave it on.
+    public var end: Int? = 18 * 60
+    /// A notification asks before it starts.
+    public var askFirst = true
+
+    public init() {}
+
+    private enum CodingKeys: String, CodingKey { case enabled, weekdays, start, end, askFirst }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = ModeSchedule()
+        enabled = c.value(.enabled, or: fallback.enabled)
+        weekdays = c.value(.weekdays, or: fallback.weekdays)
+        start = c.value(.start, or: fallback.start)
+        end = c.value(.end, or: fallback.end)
+        askFirst = c.value(.askFirst, or: fallback.askFirst)
+    }
+
+    /// The next start after `date`, in local time: across a clock change it's the same time on the wall,
+    /// and a time a clock change skips moves to the next one that exists.
+    public func nextStart(after date: Date, calendar: Calendar = .current) -> Date? {
+        next(start, after: date, calendar: calendar)
+    }
+
+    public func nextEnd(after date: Date, calendar: Calendar = .current) -> Date? {
+        end.flatMap { next($0, after: date, calendar: calendar) }
+    }
+
+    func next(_ minutes: Int, after date: Date, calendar: Calendar) -> Date? {
+        guard enabled, !weekdays.isEmpty else { return nil }
+        return weekdays.compactMap { weekday in
+            calendar.nextDate(after: date, matching: DateComponents(hour: minutes / 60, minute: minutes % 60, weekday: weekday),
+                              matchingPolicy: .nextTime)
+        }.min()
+    }
+}
+
 public struct ModeDefinition: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
@@ -247,9 +305,31 @@ public struct ModeDefinition: Codable, Sendable, Equatable, Identifiable {
     public var quitApps: [String]
     public var hideOthers: Bool
     public var keepAwake: KeepAwake
-    public var tilingOn: Bool
+    public var tiling: ModeSwitch = .leave
+    public var glow: ModeSwitch = .leave
+    public var menuBar: ModeSwitch = .leave
+    /// The theme while it's on; nil leaves it.
+    public var theme: ThemeID?
+    /// The window style while it's on; nil leaves it.
+    public var layout: TilingLayout?
+    /// Websites and links it opens.
+    public var urls: [String] = []
+    /// Switches itself off after this many minutes.
+    public var timerMinutes: Int?
+    /// A Shortcuts shortcut to run when it starts.
+    public var shortcut: String?
+    public var schedule: ModeSchedule?
 
-    private enum CodingKeys: String, CodingKey { case id, name, symbol, blurb, openApps, quitApps, hideOthers, keepAwake, tilingOn }
+    /// Orbit 1's single switch.
+    public var tilingOn: Bool {
+        get { tiling == .on }
+        set { tiling = newValue ? .on : .leave }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, symbol, blurb, openApps, quitApps, hideOthers, keepAwake, tilingOn, tiling, glow, menuBar, theme, layout, urls,
+             timerMinutes, shortcut, schedule
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -261,7 +341,36 @@ public struct ModeDefinition: Codable, Sendable, Equatable, Identifiable {
         quitApps = c.value(.quitApps, or: [])
         hideOthers = c.value(.hideOthers, or: false)
         keepAwake = c.value(.keepAwake, or: .off)
-        tilingOn = c.value(.tilingOn, or: false)
+        tiling = c.value(.tiling, or: c.value(.tilingOn, or: false) ? .on : .leave)
+        glow = c.value(.glow, or: .leave)
+        menuBar = c.value(.menuBar, or: .leave)
+        theme = c.value(.theme, or: nil)
+        layout = c.value(.layout, or: nil)
+        urls = c.value(.urls, or: [])
+        timerMinutes = c.value(.timerMinutes, or: nil)
+        shortcut = c.value(.shortcut, or: nil)
+        schedule = c.value(.schedule, or: nil)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(symbol, forKey: .symbol)
+        try c.encode(blurb, forKey: .blurb)
+        try c.encode(openApps, forKey: .openApps)
+        try c.encode(quitApps, forKey: .quitApps)
+        try c.encode(hideOthers, forKey: .hideOthers)
+        try c.encode(keepAwake, forKey: .keepAwake)
+        try c.encode(tiling, forKey: .tiling)
+        try c.encode(glow, forKey: .glow)
+        try c.encode(menuBar, forKey: .menuBar)
+        try c.encodeIfPresent(theme, forKey: .theme)
+        try c.encodeIfPresent(layout, forKey: .layout)
+        try c.encode(urls, forKey: .urls)
+        try c.encodeIfPresent(timerMinutes, forKey: .timerMinutes)
+        try c.encodeIfPresent(shortcut, forKey: .shortcut)
+        try c.encodeIfPresent(schedule, forKey: .schedule)
     }
 
     public init(id: String, name: String, symbol: String, blurb: String, openApps: [String], quitApps: [String],
@@ -274,7 +383,7 @@ public struct ModeDefinition: Codable, Sendable, Equatable, Identifiable {
         self.quitApps = quitApps
         self.hideOthers = hideOthers
         self.keepAwake = keepAwake
-        self.tilingOn = tilingOn
+        self.tiling = tilingOn ? .on : .leave
     }
 
     /// A blank mode for the user to fill in.
