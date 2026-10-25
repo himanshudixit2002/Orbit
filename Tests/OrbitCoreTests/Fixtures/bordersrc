@@ -1,0 +1,13 @@
+#!/bin/bash
+# JankyBorders: a glowing outline around the window you're working in.
+# Colours match the Tokyo Night theme used by fzf.
+# Edit and run this file to apply changes instantly.
+options=(
+  style=round
+  width=6.0
+  hidpi=on
+  active_color="glow(0xff7aa2f7)"
+  inactive_color=0x26414868
+  blacklist="uihost,Raycast"
+)
+borders "${options[@]}"

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>Orbit</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIdentifier</key><string>__ID__</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>__NAME__</string>
+  <key>CFBundleDisplayName</key><string>__NAME__</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>__VERSION__</string>
+  <key>CFBundleVersion</key><string>__BUILD__</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+  <key>LSMinimumSystemVersion</key><string>26.0</string>
+  <!-- Orbit lives in the menu bar: it gets a Dock icon only while its window is open. -->
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSSupportsAutomaticTermination</key><false/>
+  <key>NSSupportsSuddenTermination</key><false/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>__ID__</string>
+      <key>CFBundleURLSchemes</key><array><string>__SCHEME__</string></array>
+    </dict>
+  </array>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Orbit uses System Events to tuck the Mac's own menu bar away when you turn on the new one, and to add apps to your login items.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Orbit looks in Downloads only when you ask it to find old files you might want to clear.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Orbit only uses the Desktop if you ask it to put your projects back there.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Orbit opens your Documents folder when you ask it to.</string>
+</dict>
+</plist>

@@ -1,0 +1,42 @@
+{
+  "global": { "show_in_menu_bar": false },
+  "profiles": [
+    {
+      "name": "Default profile",
+      "selected": true,
+      "virtual_hid_keyboard": { "keyboard_type_v2": "ansi" },
+      "complex_modifications": {
+        "parameters": { "basic.to_if_alone_timeout_milliseconds": 300 },
+        "rules": [
+          {
+            "description": "Caps Lock: Escape when tapped, Hyper (⌘⌃⌥⇧) when held",
+            "manipulators": [
+              {
+                "type": "basic",
+                "from": { "key_code": "caps_lock", "modifiers": { "optional": ["any"] } },
+                "to": [{ "key_code": "left_shift", "modifiers": ["left_command", "left_control", "left_option"] }],
+                "to_if_alone": [{ "key_code": "escape" }]
+              }
+            ]
+          },
+          {
+            "description": "Hyper + letter opens an app",
+            "manipulators": [
+              { "type": "basic", "from": { "key_code": "t", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Warp'" }] },
+              { "type": "basic", "from": { "key_code": "b", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Google Chrome'" }] },
+              { "type": "basic", "from": { "key_code": "i", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Antigravity IDE'" }] },
+              { "type": "basic", "from": { "key_code": "c", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Claude'" }] },
+              { "type": "basic", "from": { "key_code": "g", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'ChatGPT'" }] },
+              { "type": "basic", "from": { "key_code": "w", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'WhatsApp'" }] },
+              { "type": "basic", "from": { "key_code": "s", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Spotify'" }] },
+              { "type": "basic", "from": { "key_code": "n", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Notes'" }] },
+              { "type": "basic", "from": { "key_code": "f", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Finder'" }] },
+              { "type": "basic", "from": { "key_code": "p", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'Postman'" }] },
+              { "type": "basic", "from": { "key_code": "d", "modifiers": { "mandatory": ["left_shift", "left_command", "left_control", "left_option"] } }, "to": [{ "shell_command": "open -a 'DBeaver'" }] }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

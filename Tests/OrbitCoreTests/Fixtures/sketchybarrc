@@ -1,0 +1,66 @@
+#!/bin/zsh
+# SketchyBar: a floating top bar in Tokyo Night colours, matching the glow borders.
+# Left: desktops and the current app. Centre: the Spotify track. Right: system stats and clock.
+# After editing, run: sketchybar --reload
+
+source "$CONFIG_DIR/colors.sh"
+PLUGINS="$CONFIG_DIR/plugins"
+FONT="JetBrainsMono Nerd Font"
+
+sketchybar --bar position=top height=34 y_offset=6 margin=10 corner_radius=12 \
+                 color=$BAR_COLOR border_width=1 border_color=$BAR_BORDER \
+                 blur_radius=30 shadow=on sticky=on padding_left=8 padding_right=8
+
+sketchybar --default icon.font="$FONT:Bold:14.0" icon.color=$FG \
+                     label.font="$FONT:Semibold:12.0" label.color=$FG \
+                     padding_left=3 padding_right=3 \
+                     icon.padding_left=6 icon.padding_right=4 \
+                     label.padding_left=2 label.padding_right=8 \
+                     background.height=24 background.corner_radius=8 \
+                     scroll_texts=on
+
+# ── Left ──────────────────────────────────────────────────────────────────────
+sketchybar --add item apple left \
+           --set apple icon=$'' icon.font="$FONT:Bold:16.0" icon.color=$BLUE \
+                 icon.padding_right=8 label.drawing=off
+
+for i in {1..10}; do
+  sketchybar --add space space.$i left \
+             --set space.$i associated_space=$i icon=$i \
+                   icon.padding_left=7 icon.padding_right=7 icon.color=$MUTED \
+                   label.drawing=off background.color=$BLUE background.drawing=off \
+                   background.height=22 script="$PLUGINS/space.sh"
+done
+
+sketchybar --add item divider left \
+           --set divider icon=$'│' icon.color=$MUTED label.drawing=off padding_left=6 padding_right=2 \
+           --add item front_app left \
+           --set front_app icon=$'' icon.color=$PURPLE label.font="$FONT:Bold:12.0" \
+                 script="$PLUGINS/front_app.sh" \
+           --subscribe front_app front_app_switched
+
+# ── Centre: Spotify ───────────────────────────────────────────────────────────
+sketchybar --add event spotify_change com.spotify.client.PlaybackStateChanged \
+           --add item spotify center \
+           --set spotify icon=$'' icon.color=$GREEN label.max_chars=42 drawing=off \
+                 script="$PLUGINS/spotify.sh" \
+           --subscribe spotify spotify_change
+
+# ── Right (listed right to left) ──────────────────────────────────────────────
+sketchybar --add item clock right \
+           --set clock icon=$'' icon.color=$BLUE update_freq=10 script="$PLUGINS/clock.sh" \
+           --add item wifi right \
+           --set wifi icon=$'' icon.color=$CYAN update_freq=30 script="$PLUGINS/wifi.sh" \
+           --subscribe wifi wifi_change system_woke \
+           --add item volume right \
+           --set volume icon.color=$PURPLE script="$PLUGINS/volume.sh" \
+           --subscribe volume volume_change \
+           --add item memory right \
+           --set memory icon=$'' icon.color=$AMBER update_freq=5 script="$PLUGINS/memory.sh" \
+           --add item cpu right \
+           --set cpu icon=$'' icon.color=$GREEN update_freq=3 script="$PLUGINS/cpu.sh"
+
+sketchybar --add bracket stats cpu memory volume wifi \
+           --set stats background.color=$PILL background.height=26 background.corner_radius=9
+
+sketchybar --update

@@ -1,0 +1,75 @@
+gui/501/com.himanshu.sort-downloads = {
+	active count = 0
+	path = /Users/himanshudixit/Library/LaunchAgents/com.himanshu.sort-downloads.plist
+	type = LaunchAgent
+	state = not running
+
+	program = /usr/bin/open
+	arguments = {
+		/usr/bin/open
+		-g
+		-j
+		/Users/himanshudixit/Library/Application Support/DownloadsSorter/Downloads Sorter.app
+	}
+
+	stdout path = /Users/himanshudixit/Library/Logs/sort-downloads.log
+	stderr path = /Users/himanshudixit/Library/Logs/sort-downloads.log
+	inherited environment = {
+		SSH_AUTH_SOCK => /var/run/com.apple.launchd.FZFPlWxZCu/Listeners
+	}
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		XPC_SERVICE_NAME => com.himanshu.sort-downloads
+	}
+
+	LWCR = {
+		"reqs" => {
+			"signing-identifier" => "com.apple.open"
+			"validation-category" => 1
+		}
+		"vers" => 1
+		"comp" => 1
+		"ccat" => 0
+	}
+
+	domain = gui/501 [100019]
+	asid = 100019
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 2
+	last exit code = 0
+
+	resource coalition = {
+		ID = 903
+		type = resource
+		state = active
+		active count = 1
+		name = com.himanshu.sort-downloads
+	}
+
+	jetsam coalition = {
+		ID = 904
+		type = jetsam
+		state = active
+		active count = 1
+		name = com.himanshu.sort-downloads
+	}
+
+	spawn type = background (5)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+	run interval = 3600 seconds
+	job state = exited
+	sanitizer flags = 0x0
+
+	properties = runatload | inferred program | managed LWCR | has LWCR
+}

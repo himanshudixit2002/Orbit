@@ -1,0 +1,7 @@
+# Build output (SwiftPM and Xcode), never committed.
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store

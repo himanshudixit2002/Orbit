@@ -1,0 +1,56 @@
+# skhd: keyboard shortcuts for yabai tiling. "alt" is the option (⌥) key.
+# Edits reload automatically. Full list: alt + / (cheat sheet).
+
+# ── Focus a window ─────────────────────── ⌥ h j k l
+alt - h : yabai -m window --focus west
+alt - j : yabai -m window --focus south
+alt - k : yabai -m window --focus north
+alt - l : yabai -m window --focus east
+
+# ── Swap with neighbour ────────────────── ⇧⌥ h j k l
+shift + alt - h : yabai -m window --swap west
+shift + alt - j : yabai -m window --swap south
+shift + alt - k : yabai -m window --swap north
+shift + alt - l : yabai -m window --swap east
+
+# ── Move into a new split ──────────────── ⌃⌥ h j k l
+ctrl + alt - h : yabai -m window --warp west
+ctrl + alt - j : yabai -m window --warp south
+ctrl + alt - k : yabai -m window --warp north
+ctrl + alt - l : yabai -m window --warp east
+
+# ── Resize ─────────────────────────────── ⌃⇧ h j k l
+shift + ctrl - h : yabai -m window --resize left:-60:0  || yabai -m window --resize right:-60:0
+shift + ctrl - l : yabai -m window --resize right:60:0  || yabai -m window --resize left:60:0
+shift + ctrl - j : yabai -m window --resize bottom:0:60 || yabai -m window --resize top:0:60
+shift + ctrl - k : yabai -m window --resize top:0:-60   || yabai -m window --resize bottom:0:-60
+
+# ── Arrange the whole screen ───────────────
+alt - e : yabai -m space --balance
+alt - r : yabai -m space --rotate 270
+alt - y : yabai -m space --mirror --y-axis
+alt - x : yabai -m space --mirror --x-axis
+alt - s : yabai -m window --toggle split
+
+# ── One window ─────────────────────────────
+alt - f : yabai -m window --toggle zoom-fullscreen
+alt - t : yabai -m window --toggle float --grid 4:4:1:1:2:2
+shift + alt - c : yabai -m window --toggle float --grid 6:6:1:1:4:4
+shift + alt - f : yabai -m window --toggle float --grid 20:20:1:1:18:18
+
+# ── Stack layout: next / previous window ───
+alt - n : yabai -m window --focus stack.next || yabai -m window --focus stack.first
+alt - p : yabai -m window --focus stack.prev || yabai -m window --focus stack.last
+
+# ── Layout of this desktop ─────────────────
+ctrl + alt - b : yabai -m space --layout bsp
+ctrl + alt - s : yabai -m space --layout stack
+ctrl + alt - d : yabai -m space --layout float
+
+# ── Apps ───────────────────────────────────
+alt - return : open -a Warp
+
+# ── Tiling on/off, restart, help ───────────
+ctrl + alt - q : yabai --stop-service || yabai --start-service
+ctrl + alt - r : yabai --restart-service
+alt - 0x2C : qlmanage -p ~/.config/skhd/CHEATSHEET.md >/dev/null 2>&1
