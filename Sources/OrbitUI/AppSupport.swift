@@ -16,12 +16,14 @@ public enum LaunchOptions {
 }
 
 extension AppModel {
-    /// Handles orbit:// links, opening the main window first if it's closed.
+    /// Handles orbit:// links (see `OrbitLink` for the ones it knows; anything else is ignored).
     public func open(url: URL) {
-        if url.host() == "page" || url.host() == "setup" {
-            openMainWindow()
-        }
-        handle(url)
+        guard let command = OrbitLink.command(from: url) else { return }
+        // The same link twice within a second is one request.
+        let now = Date()
+        if let last = lastLink, last.url == url, now.timeIntervalSince(last.at) < 1 { return }
+        lastLink = (url, now)
+        Task { await run(command, source: .link) }
     }
 
     /// Opens (or brings forward) the main window, with Orbit's Dock icon while it's open. Asked before

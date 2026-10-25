@@ -57,6 +57,8 @@ final class ModesModel {
     @ObservationIgnored lazy var engine = ModeEngine(ctx: ctx)
     var active: ModeRecord?
     var working: String?
+    /// Told when a mode goes on or off.
+    @ObservationIgnored var changed: (() -> Void)?
 
     init(ctx: SystemContext) {
         self.ctx = ctx
@@ -91,6 +93,7 @@ final class ModesModel {
             return record
         }
         ctx.activity.record(ActivityRecord(.change, "Switched on \(mode.name) mode"))
+        changed?()
     }
 
     func stop() async {
@@ -108,6 +111,7 @@ final class ModesModel {
         }
         active = nil
         ctx.activity.record(ActivityRecord(.change, "Switched off \(name) mode"))
+        changed?()
     }
 }
 
@@ -139,11 +143,9 @@ extension AppModel {
     // MARK: Style
 
     func applyTheme(_ id: ThemeID) {
-        let tmux = settings.themeTmux
+        let change = themeChange(id)
         settings.theme = id
-        perform("theme", "Switched to the \(Palette.named(id).name) theme") { [actions] in
-            try await actions.applyTheme(id, tmux: tmux, policy: $0)
-        }
+        perform("theme", change.title, change.work)
         if settings.wallpaperFollowsTheme { setThemeWallpaper(Palette.named(id)) }
     }
 

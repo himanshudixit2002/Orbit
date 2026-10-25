@@ -5,6 +5,67 @@ public enum FeatureID: String, CaseIterable, Sendable, Codable, Identifiable {
     case tiling, glow, menuBar, capsLock, downloads, raycast, altTab, ice, syntaxHighlight, terminalLook
 
     public var id: String { rawValue }
+
+    /// The features with an on/off switch (the rest are apps to open, or follow the theme).
+    public static let switchable: [FeatureID] = [.tiling, .glow, .menuBar, .capsLock, .downloads]
+
+    public var isSwitchable: Bool { Self.switchable.contains(self) }
+
+    public var title: String {
+        switch self {
+        case .tiling: "Window tiling"
+        case .glow: "Window glow"
+        case .menuBar: "New menu bar"
+        case .capsLock: "Caps Lock superpowers"
+        case .downloads: "Auto-sort Downloads"
+        case .raycast: "Raycast"
+        case .altTab: "AltTab"
+        case .ice: "Ice"
+        case .syntaxHighlight: "Syntax Highlight"
+        case .terminalLook: "Terminal colours"
+        }
+    }
+
+    public var blurb: String {
+        switch self {
+        case .tiling: "Windows arrange themselves side by side."
+        case .glow: "A soft outline on the window you're using."
+        case .menuBar: "A sleek floating bar with live stats."
+        case .capsLock: "Tap for Escape, hold + a letter to open an app."
+        case .downloads: "Downloads tidy themselves every hour."
+        case .raycast: "Find and open anything from the keyboard."
+        case .altTab: "⌘Tab with live window previews."
+        case .ice: "Tucks menu bar icons out of the way."
+        case .syntaxHighlight: "Coloured previews of code files in Finder."
+        case .terminalLook: "Matching colours in your terminal tools."
+        }
+    }
+
+    public var shortTitle: String {
+        switch self {
+        case .tiling: "Tiling"
+        case .glow: "Glow"
+        case .menuBar: "Menu bar"
+        case .capsLock: "Caps Lock"
+        case .downloads: "Auto-sort"
+        default: title
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .tiling: "rectangle.split.3x1.fill"
+        case .glow: "sparkles.rectangle.stack.fill"
+        case .menuBar: "menubar.rectangle"
+        case .capsLock: "capslock.fill"
+        case .downloads: "arrow.down.doc.fill"
+        case .raycast: "magnifyingglass"
+        case .altTab: "rectangle.on.rectangle"
+        case .ice: "menubar.dock.rectangle"
+        case .syntaxHighlight: "chevron.left.forwardslash.chevron.right"
+        case .terminalLook: "terminal.fill"
+        }
+    }
 }
 
 /// Permissions macOS asks the user to grant, named the way System Settings names them.

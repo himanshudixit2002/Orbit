@@ -2,48 +2,11 @@ import AppKit
 import Observation
 import OrbitCore
 import OrbitPlatform
+import OrbitShared
 import ServiceManagement
 import SwiftUI
 
-public enum Page: String, CaseIterable, Identifiable, Hashable {
-    case home, style, windows, menuBar, keyboard, files, modes, monitor, cleanup, dockFinder, apps, health
-
-    public var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .home: "Home"
-        case .style: "Style"
-        case .windows: "Windows"
-        case .menuBar: "Menu Bar"
-        case .keyboard: "Keyboard"
-        case .files: "Files"
-        case .modes: "Modes"
-        case .monitor: "Monitor"
-        case .cleanup: "Cleanup"
-        case .dockFinder: "Dock & Finder"
-        case .apps: "Apps"
-        case .health: "Health & Undo"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .home: "house.fill"
-        case .style: "paintpalette.fill"
-        case .windows: "rectangle.split.3x1.fill"
-        case .menuBar: "menubar.rectangle"
-        case .keyboard: "keyboard.fill"
-        case .files: "folder.fill"
-        case .modes: "moon.stars.fill"
-        case .monitor: "waveform.path.ecg"
-        case .cleanup: "sparkles"
-        case .dockFinder: "dock.rectangle"
-        case .apps: "square.grid.2x2.fill"
-        case .health: "heart.text.square.fill"
-        }
-    }
-
+extension Page {
     var hue: Hue {
         switch self {
         case .home: .blue
@@ -58,33 +21,6 @@ public enum Page: String, CaseIterable, Identifiable, Hashable {
         case .dockFinder: .blue
         case .apps: .cyan
         case .health: .red
-        }
-    }
-
-    var blurb: String {
-        switch self {
-        case .home: "Here's your Mac at a glance."
-        case .style: "Give the whole Mac one look in a single click."
-        case .windows: "Windows that arrange themselves, with a glow on the one you're using."
-        case .menuBar: "A sleek floating menu bar with the things you care about."
-        case .keyboard: "Caps Lock superpowers and every shortcut in one place."
-        case .files: "Downloads that tidy themselves, and where your things live."
-        case .modes: "Set up the Mac for what you're doing, in one click."
-        case .monitor: "What your Mac is busy with, live."
-        case .cleanup: "See what's taking up space and clear it safely."
-        case .dockFinder: "A tidy Dock and a smarter Finder."
-        case .apps: "Handy helper apps, and the permissions they need."
-        case .health: "Check everything is working, and undo any change."
-        }
-    }
-
-    var group: String {
-        switch self {
-        case .home: ""
-        case .style: "Look"
-        case .windows, .menuBar, .keyboard, .files, .modes: "Control"
-        case .monitor, .cleanup, .dockFinder, .apps: "System"
-        case .health: "Care"
         }
     }
 }
@@ -128,6 +64,7 @@ public final class AppModel {
     var loginNeedsApproval = false
     /// The main window was asked for before Orbit could open windows.
     @ObservationIgnored var mainWindowWanted = false
+    @ObservationIgnored var lastLink: (url: URL, at: Date)?
     /// The Dock and Finder as last read, so their page opens on real values straight away.
     var dockFinder: DockFinderReading?
     let appCatalog = AppCatalog()
@@ -151,6 +88,8 @@ public final class AppModel {
     let watchdog = Watchdog()
     /// Keeps the menu bar's CPU, memory and clock up to date (fewer processes than its scripts).
     let barFeeder: BarFeeder
+    /// Keeps what the widgets and Control Center switches show up to date.
+    let publisher: SnapshotPublisher
     /// macOS notifications (only in the real app: they need its bundle).
     var notifier: Notifier?
     /// Helpers the watchdog says keep stopping, so each is announced once.
@@ -173,6 +112,8 @@ public final class AppModel {
         modes = ModesModel(ctx: ctx)
         cleanup = CleanupModel(ctx: ctx)
         barFeeder = BarFeeder(ctx: ctx)
+        publisher = SnapshotPublisher(store: SharedStore(practice: ctx.mode == .practice, home: ctx.paths.home))
+        modes.changed = { [weak self] in self?.publishSnapshot() }
     }
 
     public static func launch(mode: RunMode) -> AppModel {
@@ -201,6 +142,7 @@ public final class AppModel {
 
     func start() async {
         modes.resume()
+        publisher.startHeartbeat { [weak self] in self.map { $0.makeSnapshot() } }
         Task { _ = await readDockFinder() }
         Task { await keepOpeningAtLogin() }
         let wallpaper = NSScreen.main.flatMap { NSWorkspace.shared.desktopImageURL(for: $0)?.path(percentEncoded: false) }
@@ -357,6 +299,7 @@ public final class AppModel {
         if practice != practiceLog { practiceLog = practice }
         exitWatcher?.watch(fresh.helperPIDs)
         barFeeder.update(running: status.menuBar.run.isRunning, barPID: status.menuBar.run.pid, bar: settings.bar, palette: settings.palette)
+        publishSnapshot()
         showLoginStatus(await Task.detached { SMAppService.mainApp.status }.value)
     }
 
@@ -505,6 +448,20 @@ public final class AppModel {
     public func prepareToQuit() async {
         _ = await finishChanges(within: .seconds(10))
         await barFeeder.handBack()
+        if !isSnapshot { publisher.stopped() }
+    }
+
+    /// What the widgets and Control Center switches show.
+    func makeSnapshot() -> OrbitSnapshot {
+        OrbitSnapshot(practice: isPractice,
+                      features: coreFeatures.map { OrbitSnapshot.Feature(id: $0, state: OrbitSnapshot.State(state($0)), detail: state($0).detail) },
+                      modes: settings.modes.map { OrbitSnapshot.Mode(id: $0.id, name: $0.name, symbol: $0.symbol) },
+                      activeMode: modes.active?.modeID, theme: settings.theme)
+    }
+
+    func publishSnapshot() {
+        guard !isSnapshot, status.checkedAt != nil else { return }
+        publisher.publish(makeSnapshot())
     }
 
     /// Whether a change is under way (quitting waits for it).
@@ -527,11 +484,13 @@ public final class AppModel {
 
     // MARK: Features
 
-    func setTiling(_ on: Bool) {
-        perform("tiling", on ? "Turned on window tiling" : "Turned off window tiling") { [actions] in
-            try await actions.setTiling(on, policy: $0)
-        }
+    /// Flips a feature's switch from the window.
+    func setFeature(_ id: FeatureID, on: Bool) {
+        guard let change = featureChange(id, on: on) else { return }
+        perform(change.key, change.title, change.work)
     }
+
+    func setTiling(_ on: Bool) { setFeature(.tiling, on: on) }
 
     func applyTiling(_ tiling: TilingSettings) {
         settings.tiling = tiling
@@ -540,11 +499,7 @@ public final class AppModel {
         }
     }
 
-    func setGlow(_ on: Bool) {
-        perform("glow", on ? "Turned on the window glow" : "Turned off the window glow") { [actions] in
-            try await actions.setGlow(on, policy: $0)
-        }
-    }
+    func setGlow(_ on: Bool) { setFeature(.glow, on: on) }
 
     func applyGlow(_ glow: GlowSettings) {
         settings.glow = glow
@@ -553,11 +508,7 @@ public final class AppModel {
         }
     }
 
-    func setMenuBar(_ on: Bool) {
-        perform("menuBar", on ? "Turned on the new menu bar" : "Turned off the new menu bar") { [actions] in
-            try await actions.setMenuBar(on, policy: $0)
-        }
-    }
+    func setMenuBar(_ on: Bool) { setFeature(.menuBar, on: on) }
 
     func applyBar(_ bar: BarSettings) {
         settings.bar = bar
@@ -566,11 +517,7 @@ public final class AppModel {
         }
     }
 
-    func setDownloads(_ on: Bool) {
-        perform("downloads", on ? "Turned on Downloads sorting" : "Turned off Downloads sorting") { [actions] _ in
-            await actions.setDownloads(on)
-        }
-    }
+    func setDownloads(_ on: Bool) { setFeature(.downloads, on: on) }
 
     func sortDownloadsNow() {
         perform("sortNow", "Sorted Downloads", lane: false) { [actions] _ in await actions.sortDownloadsNow() }
@@ -725,6 +672,7 @@ public final class AppModel {
             }
         }
         settings = ctx.store.settings
+        publishSnapshot()
         show(Toast(ok: true, message: "Saved \(mode.name) mode.", journalID: nil))
     }
 
@@ -732,6 +680,7 @@ public final class AppModel {
         let name = settings.modes.first { $0.id == id }?.name ?? "The mode"
         ctx.store.updateSettings { $0.modes.removeAll { $0.id == id } }
         settings = ctx.store.settings
+        publishSnapshot()
         show(Toast(ok: true, message: "\(name) mode is deleted.", journalID: nil))
     }
 
