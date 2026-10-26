@@ -68,15 +68,7 @@ public struct SpeedTweak: Sendable, Equatable {
     public static func tweaks(in group: Group) -> [SpeedTweak] { all.filter { $0.group == group } }
 
     /// Whether a value read back is this tweak's. Numbers compare by value, whatever their type.
-    public func isApplied(_ current: PrefValue?) -> Bool {
-        switch (value, current) {
-        case (.bool(let want), .bool(let have)): want == have
-        case (.bool(let want), .int(let have)): want == (have != 0)
-        case (.double(let want), .double(let have)): abs(want - have) < 0.0005
-        case (.double(let want), .int(let have)): abs(want - Double(have)) < 0.0005
-        default: false
-        }
-    }
+    public func isApplied(_ current: PrefValue?) -> Bool { PrefValue.same(value, current) }
 
     /// The groups whose every tweak is in place, given a way to read preferences.
     public static func groupsOn(_ read: (String, String) -> PrefValue?) -> Set<Group> {
@@ -121,5 +113,26 @@ public struct SpeedSettings: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         before = c.value(.before, or: PreferenceSnapshot())
         heavyAppNotices = c.value(.heavyAppNotices, or: true)
+    }
+}
+
+extension PrefValue {
+    /// The same setting, whatever number type macOS hands back: 0.3 stored as a float reads as
+    /// 0.30000001…, 44 may come back as 44.0, and a switch may be 1 rather than true.
+    public static func same(_ a: PrefValue?, _ b: PrefValue?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): true
+        case (.some(let x), .some(let y)): x.sameMeaning(as: y)
+        default: false
+        }
+    }
+
+    func sameMeaning(as other: PrefValue) -> Bool {
+        switch (self, other) {
+        case (.double(let a), .double(let b)): abs(a - b) < 0.0005
+        case (.double(let a), .int(let b)), (.int(let b), .double(let a)): abs(a - Double(b)) < 0.0005
+        case (.bool(let a), .int(let b)), (.int(let b), .bool(let a)): a == (b != 0)
+        default: self == other
+        }
     }
 }

@@ -91,3 +91,79 @@ import Testing
         #expect(ctx.store.settings.speed.before == PreferenceSnapshot())
     }
 }
+
+@Suite struct SpeedProbeTests {
+    @Test func theTrackerKnowsProcessorUseAndIdleTime() throws {
+        var readings = SystemReadings()
+        let calls = Locked(0)
+        readings.processStats = {
+            let n = calls.withLock { $0 += 1; return $0 }
+            return [ProcessStat(pid: 5, parent: 1, name: "Tool", path: "/Applications/Tool.app/Contents/MacOS/Tool",
+                                memory: 1_000, cpuTime: n == 1 ? 10 : 12)]
+        }
+        readings.mediaPIDs = { [] }
+        let tracker = AppUsageTracker(readings: readings)
+        let start = Date()
+        tracker.noteActive("/Applications/Tool.app/", at: start)
+        let first = tracker.sample(frontmost: nil, at: start.addingTimeInterval(600))
+        #expect(first.first?.cpuPercent == nil)
+        #expect(abs((first.first?.idleMinutes ?? 0) - 10) < 0.01)
+        let second = tracker.sample(frontmost: "/Applications/Tool.app", at: start.addingTimeInterval(660))
+        #expect((second.first?.cpuPercent ?? 0) > 0)
+        #expect(second.first?.isFrontmost == true && second.first?.idleMinutes == 0)
+    }
+
+    @Test func leftoversAndLoginAgentsAreReadFromTheirFolders() async throws {
+        let ctx = try sandboxContext()
+        let library = ctx.paths.home.appending(path: "Library-system")
+        let daemons = library.appending(path: "LaunchDaemons")
+        let tools = library.appending(path: "PrivilegedHelperTools")
+        try FileManager.default.createDirectory(at: daemons, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: tools, withIntermediateDirectories: true)
+        let tool = tools.appending(path: "com.docker.vmnetd")
+        try Data("x".utf8).write(to: tool)
+        let plist: [String: Any] = ["Label": "com.docker.vmnetd", "Program": tool.path(percentEncoded: false), "RunAtLoad": true]
+        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: daemons.appending(path: "com.docker.vmnetd.plist"))
+        let apps = ctx.paths.home.appending(path: "Apps")
+        try FileManager.default.createDirectory(at: apps.appending(path: "Safari.app"), withIntermediateDirectories: true)
+
+        let probe = SpeedProbe(ctx, library: library, applicationFolders: [apps])
+        let facts = probe.facts(apps: [])
+        #expect(facts.leftovers.map(\.owner) == ["Docker"])
+        #expect(facts.leftovers.first?.paths.contains(tool.path(percentEncoded: false)) == true)
+
+        // Your own login agents (Orbit's helpers aside), and switching one off with Undo.
+        try FileManager.default.createDirectory(at: ctx.paths.launchAgents, withIntermediateDirectories: true)
+        for (label, program) in [("com.example.thing", "/Applications/Thing.app/Contents/MacOS/Thing"), (Helper.yabai.label, "/opt/homebrew/bin/yabai")] {
+            let agent: [String: Any] = ["Label": label, "ProgramArguments": [program], "RunAtLoad": true]
+            try PropertyListSerialization.data(fromPropertyList: agent, format: .xml, options: 0)
+                .write(to: ctx.paths.launchAgents.appending(path: "\(label).plist"))
+        }
+        let agents = probe.loginAgents()
+        #expect(agents.map(\.name) == ["Thing"])
+        let off = await Actions(ctx).setStartsAtLogin(agents[0], false)
+        #expect(off.ok)
+        #expect(probe.loginAgents().first?.startsAtLogin == false)
+        _ = await Actions(ctx).undo(off.undo)
+        #expect(probe.loginAgents().first?.startsAtLogin == true)
+    }
+
+    @Test func applyingTwiceRestartsNothingTheSecondTime() async throws {
+        let system = FakeSystem()
+        let ctx = try sandboxContext(system, prefs: FakePreferences())
+        let actions = Actions(ctx)
+        _ = await actions.setInstant([.dock], on: true)
+        let restarts = system.commands.filter { FakeSystem.name($0) == "killall" }.count
+        let again = await actions.setInstant([.dock], on: true)
+        #expect(again.undo.isEmpty)
+        #expect(system.commands.filter { FakeSystem.name($0) == "killall" }.count == restarts)
+    }
+
+    @Test func quittingInPracticeOnlyWritesItDown() async throws {
+        let ctx = SystemContext.make(mode: .practice, paths: try tempHome())
+        let finder = "/System/Library/CoreServices/Finder.app"
+        let outcome = await Actions(ctx).quitApp(path: finder, name: "Finder")
+        #expect(outcome.ok && outcome.undo.isEmpty)
+        #expect(ctx.practiceLog.all.contains { $0.summary == "Would ask Finder to quit" })
+    }
+}

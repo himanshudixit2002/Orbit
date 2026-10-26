@@ -18,6 +18,56 @@ extension AppModel {
     }
 
     var instantBusy: Bool { busy.contains { $0.hasPrefix("instant-") } }
+
+    /// Looks at what slows the Mac now (off the main thread) and shows what it finds.
+    func runSpeedCheck() {
+        guard !isSnapshot, !speedRunning else { return }
+        speedRunning = true
+        let tracker = speedTracker
+        let probe = SpeedProbe(ctx)
+        let front = NSWorkspace.shared.frontmostApplication?.bundleURL?.path(percentEncoded: false)
+        Task {
+            let (facts, agents) = await Task.detached(priority: .utility) {
+                (probe.facts(apps: tracker.sample(frontmost: front)), probe.loginAgents())
+            }.value
+            speedFacts = facts
+            appUsage = facts.apps
+            loginAgents = agents
+            speedFindings = SpeedCheck.findings(facts, ignored: Set(settings.doctorIgnored))
+            speedChecked = Date()
+            speedRunning = false
+        }
+    }
+
+    /// The apps and what they use, fresh (the Speed page's live list).
+    func refreshAppUsage() async {
+        let tracker = speedTracker
+        let front = NSWorkspace.shared.frontmostApplication?.bundleURL?.path(percentEncoded: false)
+        let apps = await Task.detached(priority: .utility) { tracker.sample(frontmost: front) }.value
+        if apps != appUsage { appUsage = apps }
+    }
+
+    func quitApp(_ app: AppUsage) {
+        Task {
+            await performNow("quit-\(app.path)", "Asked \(app.name) to quit") { [actions] _ in
+                await actions.quitApp(path: app.path, name: app.name)
+            }
+            await refreshAppUsage()
+        }
+    }
+
+    func setStartsAtLogin(_ agent: UserLoginAgent, _ on: Bool) {
+        Task {
+            await performNow("agent-\(agent.label)", "\(agent.name) \(on ? "starts" : "stopped starting") at login") { [actions] _ in
+                await actions.setStartsAtLogin(agent, on)
+            }
+            runSpeedCheck()
+        }
+    }
+
+    func openSettings(_ pane: SettingsPane) {
+        if let url = URL(string: pane.url) { NSWorkspace.shared.open(url) }
+    }
 }
 
 /// Take the waiting out of the Mac, and keep it quick.
@@ -56,7 +106,164 @@ struct SpeedPage: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            SectionTitle(text: "What slows it down")
+            SpeedFindingsPanel()
+            SectionTitle(text: "Using the most now")
+            AppUsageList()
+            SectionTitle(text: "Starts with your Mac")
+            LoginAgentsPanel()
+            SectionTitle(text: "macOS's own background work")
+            AppleWorkPanel()
         }
         .task(id: model.journal) { await model.readInstant() }
+        .onAppear {
+            if model.speedChecked.map({ Date().timeIntervalSince($0) > 60 }) ?? true { model.runSpeedCheck() }
+        }
+    }
+}
+
+/// The Speed check's findings, each with its fix and Ignore.
+struct SpeedFindingsPanel: View {
+    @Environment(AppModel.self) private var model
+    @State private var confirming: DoctorFinding?
+
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(model.speedFindings.isEmpty ? "" : "\(model.speedFindings.count) thing\(model.speedFindings.count == 1 ? "" : "s") to look at")
+                        .font(.title3.weight(.semibold))
+                    Spacer()
+                    if model.speedRunning { ProgressView().controlSize(.small) }
+                    Button("Look again") { model.runSpeedCheck() }.buttonStyle(.glass).disabled(model.speedRunning)
+                }
+                if model.speedFindings.isEmpty {
+                    Label(model.speedChecked == nil ? "Having a look…" : "Nothing is slowing your Mac down.",
+                          systemImage: model.speedChecked == nil ? "bolt" : "checkmark.seal.fill")
+                        .foregroundStyle(model.speedChecked == nil ? Color.secondary : Color.green)
+                }
+                ForEach(model.speedFindings) { finding in
+                    FindingRow(finding: finding) { confirming = finding }
+                }
+            }
+        }
+        .confirmationDialog(Text(confirming?.fix?.label ?? ""), isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
+                            presenting: confirming) { finding in
+            Button(finding.fix?.label ?? "Fix") { model.fix(finding) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("It's asked to quit as if you chose Quit: it can save first, and it's never forced. Undo opens it again.")
+        }
+    }
+}
+
+/// The apps using the most memory and processor now, refreshed while it shows.
+struct AppUsageList: View {
+    @Environment(AppModel.self) private var model
+    @State private var quitting: AppUsage?
+
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                if model.appUsage.isEmpty { Text("Reading…").foregroundStyle(.secondary) }
+                ForEach(model.appUsage.prefix(8)) { app in row(app) }
+                Text("Memory as Activity Monitor counts it; an app's helpers count toward it. Processor is the share of one core over the last few seconds.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                await model.refreshAppUsage()
+                try? await Task.sleep(for: .seconds(4))
+            }
+        }
+        .confirmationDialog(Text("Quit \(quitting?.name ?? "it")?"), isPresented: Binding(get: { quitting != nil }, set: { if !$0 { quitting = nil } }),
+                            presenting: quitting) { app in
+            Button("Quit \(app.name)") { model.quitApp(app) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("It can save first, and it's never forced. Undo opens it again.")
+        }
+    }
+
+    func row(_ app: AppUsage) -> some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: app.path)).resizable().frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.name).font(.body.weight(.medium)).lineLimit(1)
+                Text(status(app)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Text(ByteCountFormatter.string(fromByteCount: Int64(app.memory), countStyle: .memory))
+                .font(.callout.monospacedDigit()).frame(width: 80, alignment: .trailing)
+            Text(app.cpuPercent.map { String(format: "%.0f%%", $0) } ?? "–")
+                .font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 46, alignment: .trailing)
+            if SpeedCheck.quittable(app) {
+                Button("Quit") { quitting = app }.buttonStyle(.glass).disabled(model.isBusy("quit-\(app.path)"))
+            } else {
+                Color.clear.frame(width: 52, height: 1)
+            }
+        }
+    }
+
+    func status(_ app: AppUsage) -> String {
+        if app.isFrontmost { return "In front" }
+        if app.inUse { return "Playing" }
+        if app.isApple { return "Part of macOS" }
+        let idle = Int(app.idleMinutes ?? 0)
+        return idle < 2 ? "Just used" : idle < 120 ? "Not used for \(idle) min" : "Not used for \(idle / 60) h"
+    }
+}
+
+/// Your own background jobs that start at login, each with a switch, and the way to the rest.
+struct LoginAgentsPanel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(model.loginAgents) { agent in
+                    SettingRow(title: agent.name, detail: agent.label) {
+                        Toggle("At login", isOn: Binding(get: { agent.startsAtLogin }, set: { model.setStartsAtLogin(agent, $0) }))
+                            .toggleStyle(.switch)
+                            .disabled(model.isBusy("agent-\(agent.label)"))
+                    }
+                }
+                HStack {
+                    Text("Apps that open at login, and helpers installed for the whole Mac, are in System Settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Open Login Items") { model.openSettings(.loginItems) }.buttonStyle(.glass)
+                }
+            }
+        }
+    }
+}
+
+/// What macOS itself does in the background, with the settings only you can change.
+struct AppleWorkPanel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                SettingRow(title: "Siri and Apple Intelligence", detail: siriDetail) {
+                    Button("Open Siri settings") { model.openSettings(.siri) }.buttonStyle(.glass)
+                }
+                SettingRow(title: "Spotlight", detail: "Indexes your files in the background. Leaving out folders or results you don't search lightens it.") {
+                    Button("Open Spotlight settings") { model.openSettings(.spotlight) }.buttonStyle(.glass)
+                }
+                SettingRow(title: "Reduce transparency", detail: "Solid backgrounds instead of glass: less for the screen to redraw.") {
+                    Button("Open Display settings") { model.openSettings(.display) }.buttonStyle(.glass)
+                }
+            }
+        }
+    }
+
+    var siriDetail: String {
+        guard let facts = model.speedFacts else { return "Listening for “Hey Siri” and Apple Intelligence run all day." }
+        guard facts.siriOn else { return "Off: nothing runs for it." }
+        return "On. Its processes have used \(SpeedCheck.duration(facts.siriSeconds)) of processor time. If you don't use it, switch Siri, Apple Intelligence and “Listen for” off."
     }
 }

@@ -531,13 +531,16 @@ public struct Actions: Sendable {
     /// Changes preferences, then restarts whatever shows them so the change appears at once.
     public func setPreferences(_ changes: [PreferenceChange], message: String) async -> ActionOutcome {
         let undo = UndoRecorder.forThisTask(ctx.store)
+        var changed = Set<String>()
         for change in changes {
             let old = ctx.readings.preference(change.domain, change.key)
-            guard old != change.value else { continue }
+            guard !PrefValue.same(old, change.value) else { continue }
             ctx.prefs.set(change.domain, change.key, change.value)
             undo.append(.restorePreference(domain: change.domain, key: change.key, value: old))
+            changed.insert(change.domain)
         }
-        await refreshAfterPreferences(Set(changes.map(\.domain)))
+        // Only what changed restarts: nothing to show, no Dock or Finder blink.
+        await refreshAfterPreferences(changed)
         return ActionOutcome(ok: true, message: message, undo: undo.actions)
     }
 
@@ -621,6 +624,12 @@ public struct Actions: Sendable {
             case .brewService(let formula, let wasRunning):
                 let result = await ctx.run(Commands.brewService(wasRunning ? .start : .stop, formula, name: Doctor.serviceName(formula)))
                 if !result.ok { failures.append("\(Doctor.serviceName(formula)): \(result.failureMessage)") }
+            case .reopenApp(let path, let name):
+                guard FileManager.default.fileExists(atPath: path) else {
+                    failures.append("\(name) isn't there any more")
+                    continue
+                }
+                await ctx.run(Commands.openApp(at: path, name: name, background: true))
             case .arrangeWindows(let layout):
                 if await isRunning(.yabai) {
                     await arrange(layout)

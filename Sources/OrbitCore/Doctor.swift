@@ -45,6 +45,14 @@ public enum DoctorFix: Sendable, Equatable {
     case open(Page)
     /// Write the cheat sheet afresh from the current shortcuts.
     case refreshCheatSheet
+    /// Switch on every Instant Mac tweak.
+    case makeInstant
+    /// Ask an app to quit (it can save first; never forced).
+    case quitApp(path: String, name: String)
+    /// Show files in Finder for the user to deal with (deleting system files needs their password).
+    case showInFinder([String])
+    /// Open a System Settings pane for a setting only the user can change.
+    case openSettings(SettingsPane)
 
     /// The button's words.
     public var label: String {
@@ -55,6 +63,10 @@ public enum DoctorFix: Sendable, Equatable {
         case .installTmuxPlugins: "Install them"
         case .open(let page): "Open \(page.title)"
         case .refreshCheatSheet: "Update it"
+        case .makeInstant: "Make it instant"
+        case .quitApp(_, let name): "Quit \(name)"
+        case .showInFinder: "Show in Finder"
+        case .openSettings(let pane): "Open \(pane.title)"
         }
     }
 
@@ -69,14 +81,18 @@ public enum DoctorFix: Sendable, Equatable {
         case .installTmuxPlugins: "Installed tmux's plugins"
         case .open(let page): "Opened \(page.title)"
         case .refreshCheatSheet: "Updated the cheat sheet"
+        case .makeInstant: "Made the Mac feel instant"
+        case .quitApp(_, let name): "Asked \(name) to quit"
+        case .showInFinder: "Showed the leftover files in Finder"
+        case .openSettings(let pane): "Opened \(pane.title)"
         }
     }
 
     /// Fixes that move things or stop things are confirmed first.
     public var asksFirst: Bool {
         switch self {
-        case .trash, .stopService, .removeHyperKey: true
-        case .installTmuxPlugins, .open, .refreshCheatSheet: false
+        case .trash, .stopService, .removeHyperKey, .quitApp: true
+        case .installTmuxPlugins, .open, .refreshCheatSheet, .makeInstant, .showInFinder, .openSettings: false
         }
     }
 }

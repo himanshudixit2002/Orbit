@@ -74,6 +74,20 @@ struct HomePage: View {
                 }
             }
 
+            if !model.speedFindings.isEmpty {
+                GlassPanel {
+                    HStack(spacing: 12) {
+                        IconTile(symbol: "bolt.fill", hue: .orange, size: 34)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(model.speedFindings.count) thing\(model.speedFindings.count == 1 ? "" : "s") slow\(model.speedFindings.count == 1 ? "s" : "") your Mac down").font(.headline)
+                            Text(model.speedFindings.first?.title ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Button("Show") { model.page = .speed }.buttonStyle(.glass)
+                    }
+                }
+            }
+
             if !model.attention.isEmpty {
                 SectionTitle(text: "Needs your OK")
                 VStack(spacing: 12) {

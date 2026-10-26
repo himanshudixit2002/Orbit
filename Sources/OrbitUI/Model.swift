@@ -119,6 +119,17 @@ public final class AppModel {
     let publisher: SnapshotPublisher
     /// Sorts each download as soon as it's finished, while Orbit runs.
     let instantSorter: InstantSorter
+    /// When each app was last in front and what it used last time: for the Speed page (and, apart,
+    /// for the heavy-app notices, whose sampling runs on its own clock).
+    let speedTracker: AppUsageTracker
+    let heavyTracker: AppUsageTracker
+    var speedFindings: [DoctorFinding] = []
+    var speedFacts: SpeedFacts?
+    var speedChecked: Date?
+    var speedRunning = false
+    var appUsage: [AppUsage] = []
+    var loginAgents: [UserLoginAgent] = []
+    private var activationObserver: NSObjectProtocol?
     var sortingInstantly = false
     @ObservationIgnored var sorterScriptChecked = false
     /// macOS notifications (only in the real app: they need its bundle).
@@ -144,6 +155,8 @@ public final class AppModel {
         cleanup = CleanupModel(ctx: ctx)
         barFeeder = BarFeeder(ctx: ctx)
         instantSorter = InstantSorter(ctx: ctx)
+        speedTracker = AppUsageTracker(readings: ctx.readings)
+        heavyTracker = AppUsageTracker(readings: ctx.readings)
         publisher = SnapshotPublisher(store: SharedStore(practice: ctx.mode == .practice, home: ctx.paths.home))
         modes.changed = { [weak self] record in
             self?.publishSnapshot()
@@ -203,11 +216,13 @@ public final class AppModel {
                 try? await Task.sleep(for: .seconds(6 * 3600), tolerance: .seconds(600))
             }
         }
-        // The Doctor looks once Orbit has settled (it reads app bundles and folders).
+        // The Doctor and the Speed check look once Orbit has settled (they read app bundles and folders).
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(justStarted ? 300 : 20))
             self?.runDoctor()
+            self?.runSpeedCheck()
         }
+        watchActivations()
         applyHotKey()
         publisher.startHeartbeat { [weak self] in self.map { $0.makeSnapshot() } }
         Task { _ = await readDockFinder() }
@@ -236,6 +251,22 @@ public final class AppModel {
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.cameToFront() }
+        }
+    }
+
+    /// Keeps track of when each app was last in front (for "you haven't used it for a while").
+    func watchActivations() {
+        if let front = NSWorkspace.shared.frontmostApplication?.bundleURL?.path(percentEncoded: false) {
+            speedTracker.noteActive(front)
+            heavyTracker.noteActive(front)
+        }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [speedTracker, heavyTracker] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let path = app.bundleURL?.path(percentEncoded: false) else { return }
+            speedTracker.noteActive(path)
+            heavyTracker.noteActive(path)
         }
     }
 

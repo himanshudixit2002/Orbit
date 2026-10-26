@@ -76,7 +76,25 @@ public enum DockModel {
 /// Places in System Settings Orbit sends people to.
 public enum SettingsPane: String, Sendable, CaseIterable {
     case accessibility, inputMonitoring, screenRecording, filesAndFolders, automation, loginItems, desktopAndDock,
-         wallpaper, keyboard, privacy
+         wallpaper, keyboard, privacy, siri, spotlight, display
+
+    public var title: String {
+        switch self {
+        case .accessibility: "Accessibility settings"
+        case .inputMonitoring: "Input Monitoring settings"
+        case .screenRecording: "Screen Recording settings"
+        case .filesAndFolders: "Files and Folders settings"
+        case .automation: "Automation settings"
+        case .loginItems: "Login Items"
+        case .desktopAndDock: "Desktop & Dock settings"
+        case .wallpaper: "Wallpaper settings"
+        case .keyboard: "Keyboard settings"
+        case .privacy: "Privacy settings"
+        case .siri: "Siri settings"
+        case .spotlight: "Spotlight settings"
+        case .display: "Display settings"
+        }
+    }
 
     public var url: String {
         let privacy = "x-apple.systempreferences:com.apple.preference.security?"
@@ -91,6 +109,9 @@ public enum SettingsPane: String, Sendable, CaseIterable {
         case .desktopAndDock: return "x-apple.systempreferences:com.apple.Desktop-Settings.extension"
         case .wallpaper: return "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension"
         case .keyboard: return "x-apple.systempreferences:com.apple.Keyboard-Settings.extension"
+        case .siri: return "x-apple.systempreferences:com.apple.Siri-Settings.extension"
+        case .spotlight: return "x-apple.systempreferences:com.apple.Spotlight-Settings.extension"
+        case .display: return "x-apple.systempreferences:com.apple.Accessibility-Settings.extension?Display"
         }
     }
 

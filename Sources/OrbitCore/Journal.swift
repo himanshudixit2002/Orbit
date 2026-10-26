@@ -61,6 +61,8 @@ public enum UndoAction: Codable, Sendable, Equatable {
     case brewService(formula: String, wasRunning: Bool)
     /// Put windows back where they were (as far as they can go: never to another desktop).
     case arrangeWindows(WindowLayout)
+    /// Open an app again that Orbit asked to quit.
+    case reopenApp(path: String, name: String)
 
     /// What this step puts back, so two changes that touched the same thing can be found.
     public var targets: [String] {
@@ -75,6 +77,7 @@ public enum UndoAction: Codable, Sendable, Equatable {
         case .restoreJSONKeys(let path, let values, let absent): (values.keys.sorted() + absent).map { "file \(path) key \($0)" }
         case .brewService(let formula, _): ["service \(formula)"]
         case .arrangeWindows(let layout): layout.desktops.map { "desktop \($0.index)" }
+        case .reopenApp(let path, _): ["app \(path)"]
         }
     }
 }

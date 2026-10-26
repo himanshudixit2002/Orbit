@@ -47,3 +47,91 @@ import Testing
         #expect(!snapshot.knows("b"))
     }
 }
+
+@Suite struct SpeedCheckTests {
+    let claude = "/Applications/Claude.app"
+    func stat(_ pid: Int32, _ path: String, parent: Int32 = 1, memory: UInt64 = 100, cpu: Double = 0) -> ProcessStat {
+        ProcessStat(pid: pid, parent: parent, name: URL(fileURLWithPath: path).lastPathComponent, path: path, memory: memory, cpuTime: cpu)
+    }
+
+    @Test func helpersToolsAndAddOnsCountTowardTheirApp() {
+        let stats = [
+            stat(10, "\(claude)/Contents/MacOS/Claude", memory: 400),
+            stat(11, "\(claude)/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer)", parent: 10, memory: 700),
+            stat(12, "\(claude)/Contents/Helpers/disclaimer", parent: 10, memory: 5),
+            stat(13, "/Users/me/Library/Application Support/Claude/claude-code/2.1/claude.app/Contents/MacOS/claude", parent: 12, memory: 450),
+            stat(14, "/opt/homebrew/bin/node", parent: 13, memory: 200),
+            stat(20, "/opt/homebrew/bin/mongod", memory: 90),
+            stat(30, "/System/Applications/Siri AI.app/Contents/MacOS/Siri AI", memory: 180)
+        ]
+        let apps = AppGrouping.apps(stats, before: nil, interval: 0)
+        #expect(apps.map(\.name) == ["Claude", "Siri AI"])
+        #expect(apps[0].memory == 1755 && apps[0].processes == 5 && apps[0].cpuPercent == nil)
+        #expect(apps[1].isApple && !SpeedCheck.quittable(apps[1]))
+    }
+
+    @Test func processorUseComesFromTwoReadings() {
+        let before: [Int32: Double] = [10: 100, 11: 50]
+        let stats = [stat(10, "\(claude)/Contents/MacOS/Claude", cpu: 101), stat(11, "\(claude)/Contents/Frameworks/H.app/Contents/MacOS/H", parent: 10, cpu: 50.5),
+                     stat(12, "\(claude)/Contents/Frameworks/New.app/Contents/MacOS/New", parent: 10, cpu: 7)]
+        let app = AppGrouping.apps(stats, before: before, interval: 5, playing: [11]).first!
+        #expect(abs((app.cpuPercent ?? 0) - 30) < 0.001)   // (1 + 0.5) s over 5 s; the new helper counts from now
+        #expect(app.inUse)
+    }
+
+    @Test func leftoversAreHelpersWhoseAppIsGone() {
+        let items = [
+            LaunchItem(label: "com.docker.vmnetd", plist: "/Library/LaunchDaemons/com.docker.vmnetd.plist", program: "/Library/PrivilegedHelperTools/com.docker.vmnetd", programExists: true),
+            LaunchItem(label: "com.docker.socket", plist: "/Library/LaunchDaemons/com.docker.socket.plist", program: "/Library/PrivilegedHelperTools/com.docker.socket", programExists: true),
+            LaunchItem(label: "com.microsoft.update.agent", plist: "/Library/LaunchAgents/com.microsoft.update.agent.plist",
+                       program: "/Library/Application Support/Microsoft/MAU2.0/Microsoft AutoUpdate.app/Contents/MacOS/Microsoft Update Assistant.app/Contents/MacOS/Microsoft Update Assistant", programExists: true),
+            LaunchItem(label: "org.example.gone", plist: "/Library/LaunchAgents/org.example.gone.plist", program: "/opt/gone/tool", programExists: false),
+            LaunchItem(label: "com.example.fine", plist: "/Library/LaunchAgents/com.example.fine.plist", program: "/usr/local/bin/fine", programExists: true)
+        ]
+        let found = Leftovers.find(items, installedApps: ["Safari.app"])
+        #expect(found.map(\.owner) == ["Docker", "Microsoft AutoUpdate", "org.example.gone"])
+        #expect(found[0].paths == ["/Library/LaunchDaemons/com.docker.socket.plist", "/Library/PrivilegedHelperTools/com.docker.socket",
+                                   "/Library/LaunchDaemons/com.docker.vmnetd.plist", "/Library/PrivilegedHelperTools/com.docker.vmnetd"])
+        #expect(found[1].paths.last == "/Library/Application Support/Microsoft/MAU2.0/Microsoft AutoUpdate.app")
+        #expect(Leftovers.find(items, installedApps: ["Docker.app", "Microsoft Word.app"]).map(\.owner) == ["org.example.gone"])
+    }
+
+    @Test func busyIdleAppsAreFlaggedBigOnesOnlyWhenMemoryIsTight() {
+        var facts = SpeedFacts()
+        facts.instantOn = Set(SpeedTweak.Group.allCases)
+        facts.apps = [
+            AppUsage(name: "Busy", path: "/Applications/Busy.app", memory: 300_000_000, cpuPercent: 25, idleMinutes: 45),
+            AppUsage(name: "Big", path: "/Applications/Big.app", memory: 3_000_000_000, cpuPercent: 0, idleMinutes: 90),
+            AppUsage(name: "Front", path: "/Applications/Front.app", memory: 3_000_000_000, cpuPercent: 80, isFrontmost: true, idleMinutes: 0),
+            AppUsage(name: "Movie", path: "/Applications/Movie.app", memory: 2_000_000_000, cpuPercent: 40, idleMinutes: 100, inUse: true)
+        ]
+        #expect(SpeedCheck.findings(facts).map(\.id) == ["speed-heavy-/Applications/Busy.app"])
+        facts.memoryPressure = 2
+        let tight = SpeedCheck.findings(facts)
+        #expect(tight.first?.id == "speed-memory")
+        #expect(Set(tight.map(\.id)).isSuperset(of: ["speed-heavy-/Applications/Busy.app", "speed-heavy-/Applications/Big.app"]))
+        #expect(tight.first { $0.id == "speed-heavy-/Applications/Big.app" }?.fix == .quitApp(path: "/Applications/Big.app", name: "Big"))
+    }
+
+    @Test func siriInstantDiskAndIgnoring() {
+        var facts = SpeedFacts()
+        facts.siriOn = true
+        facts.siriSeconds = 100
+        facts.diskFree = 5
+        facts.diskTotal = 100
+        let ids = SpeedCheck.findings(facts).map(\.id)
+        #expect(ids == ["speed-disk", "speed-instant", "speed-siri"] || Set(ids) == ["speed-disk", "speed-instant", "speed-siri"])
+        #expect(SpeedCheck.findings(facts).first { $0.id == "speed-siri" }?.title == "Siri used 1 min 40 s of processor time")
+        #expect(SpeedCheck.findings(facts, ignored: ["speed-siri", "speed-disk"]).map(\.id) == ["speed-instant"])
+        facts.siriOn = false
+        #expect(!SpeedCheck.findings(facts).contains { $0.id == "speed-siri" })
+    }
+
+    @Test func preferencesCompareByMeaning() {
+        #expect(PrefValue.same(.double(0.30000001192092896), .double(0.3)))
+        #expect(PrefValue.same(.int(44), .double(44)))
+        #expect(PrefValue.same(.int(1), .bool(true)) && !PrefValue.same(.int(0), .bool(true)))
+        #expect(PrefValue.same(nil, nil) && !PrefValue.same(nil, .bool(false)))
+        #expect(SpeedCheck.duration(45) == "45 s" && SpeedCheck.duration(120) == "2 min" && SpeedCheck.duration(3725) == "1 h 2 min")
+    }
+}

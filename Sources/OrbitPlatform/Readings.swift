@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import IOKit.pwr_mgt
 import OrbitCore
 import ServiceManagement
 
@@ -37,25 +38,7 @@ public struct RunningProcess: Sendable, Equatable {
     }
 }
 
-/// A process's footprint: its program, the memory it holds, and the processor time it has used.
-public struct ProcessStat: Sendable, Equatable {
-    public let pid: Int32
-    public let name: String
-    /// The program's path ("" when macOS won't say).
-    public let path: String
-    /// Memory it holds now (resident), in bytes.
-    public let memory: UInt64
-    /// Processor time since it started (user and system), in seconds.
-    public let cpuTime: Double
-
-    public init(pid: Int32, name: String, path: String, memory: UInt64, cpuTime: Double) {
-        self.pid = pid
-        self.name = name
-        self.path = path
-        self.memory = memory
-        self.cpuTime = cpuTime
-    }
-
+extension ProcessStat {
     /// Every process macOS lets Orbit look at (as `ps` sees them), read without helper processes.
     public static func all() -> [ProcessStat] {
         var timebase = mach_timebase_info_data_t()
@@ -69,7 +52,12 @@ public struct ProcessStat: Sendable, Equatable {
             guard process.pid > 0, proc_pidinfo(process.pid, PROC_PIDTASKINFO, 0, &info, size) == size else { return nil }
             let length = proc_pidpath(process.pid, &buffer, UInt32(buffer.count))
             let path = length > 0 ? String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self) : ""
-            return ProcessStat(pid: process.pid, name: process.name, path: path, memory: info.pti_resident_size,
+            // Memory as Activity Monitor counts it: shared pages aren't counted once per helper.
+            var usage = rusage_info_v4()
+            let footprint = withUnsafeMutablePointer(to: &usage) {
+                $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(process.pid, RUSAGE_INFO_V4, $0) }
+            } == 0 ? usage.ri_phys_footprint : info.pti_resident_size
+            return ProcessStat(pid: process.pid, parent: process.parent, name: process.name, path: path, memory: footprint,
                                cpuTime: Double(info.pti_total_user + info.pti_total_system) * seconds)
         }
     }
@@ -80,6 +68,8 @@ public struct SystemReadings: Sendable {
     public var processes: @Sendable () -> [RunningProcess] = { RunningProcess.all() }
     /// Each process's program, memory and processor time (the Speed check and heavy-app notices).
     public var processStats: @Sendable () -> [ProcessStat] = { ProcessStat.all() }
+    /// Processes playing sound or video now (they hold macOS's "keep awake for playback" assertions).
+    public var mediaPIDs: @Sendable () -> Set<Int32> = { MediaPlayback.pids() }
     /// A preference as macOS has it now (what `defaults read` shows).
     public var preference: @Sendable (_ domain: String, _ key: String) -> PrefValue? = { Preferences.read($0, $1) }
     /// Bundle ids of the apps running now.
@@ -93,4 +83,26 @@ public struct SystemReadings: Sendable {
     public var installed: @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
 
     public init() {}
+}
+
+/// Who is playing sound or video, from macOS's power assertions (what `pmset -g assertions` lists).
+enum MediaPlayback {
+    static func pids() -> Set<Int32> {
+        var byProcess: Unmanaged<CFDictionary>?
+        guard IOPMCopyAssertionsByProcess(&byProcess) == kIOReturnSuccess,
+              let all = byProcess?.takeRetainedValue() as? [NSNumber: [[String: Any]]] else { return [] }
+        var pids = Set<Int32>()
+        for (pid, assertions) in all {
+            for assertion in assertions {
+                let name = (assertion["AssertName"] as? String ?? "").lowercased()
+                let type = assertion["AssertType"] as? String ?? ""
+                guard name.contains("playback") || name.contains("audio") || name.contains("video")
+                        || type == "PreventUserIdleDisplaySleep" else { continue }
+                pids.insert(pid.int32Value)
+                // Sound is often held by coreaudiod on behalf of the app that plays it.
+                if let onBehalf = assertion["AssertionOnBehalfOfPID"] as? NSNumber { pids.insert(onBehalf.int32Value) }
+            }
+        }
+        return pids
+    }
 }

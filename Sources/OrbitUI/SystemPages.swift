@@ -96,7 +96,10 @@ enum DockPreset {
             .init(dock, "autohide-time-modifier", .double(0.35)), .init(dock, "show-recents", .bool(false)),
             .init(dock, "minimize-to-application", .bool(true)), .init(dock, "mineffect", .string("scale")),
             .init(dock, "mru-spaces", .bool(false)), .init(dock, "expose-group-apps", .bool(true))
-        ]
+        ].filter { change in
+            // A faster Dock from the Speed page stays: the preset doesn't slow it back down.
+            !SpeedTweak.all.contains { $0.domain == change.domain && $0.key == change.key && $0.isApplied(Preferences.read(change.domain, change.key)) }
+        }
     }
 
     static let finder: [Actions.PreferenceChange] = {

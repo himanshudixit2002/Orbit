@@ -1,3 +1,4 @@
+import AppKit
 import OrbitCore
 import OrbitPlatform
 import SwiftUI
@@ -18,13 +19,23 @@ extension AppModel {
 
     func fix(_ finding: DoctorFinding) {
         guard let fix = finding.fix else { return }
-        if case .open(let page) = fix {
+        // Showing something isn't a change: no history entry.
+        switch fix {
+        case .open(let page):
             self.page = page
             return
+        case .showInFinder(let paths):
+            NSWorkspace.shared.activateFileViewerSelecting(paths.map { URL(fileURLWithPath: $0) })
+            return
+        case .openSettings(let pane):
+            if let url = URL(string: pane.url) { NSWorkspace.shared.open(url) }
+            return
+        default:
+            break
         }
         Task {
             await performNow("doctor-\(finding.id)", fix.historyTitle) { [actions] policy in try await actions.fix(fix, policy: policy) }
-            runDoctor()
+            if finding.id.hasPrefix("speed-") { runSpeedCheck() } else { runDoctor() }
         }
     }
 
@@ -32,12 +43,14 @@ extension AppModel {
         ctx.store.updateSettings { $0.doctorIgnored.append(finding.id) }
         settings = ctx.store.settings
         doctor.removeAll { $0.id == finding.id }
+        speedFindings.removeAll { $0.id == finding.id }
     }
 
     func showIgnoredFindings() {
         ctx.store.updateSettings { $0.doctorIgnored = [] }
         settings = ctx.store.settings
         runDoctor()
+        runSpeedCheck()
     }
 }
 
@@ -60,7 +73,9 @@ struct DoctorPanel: View {
                           systemImage: model.doctorChecked == nil ? "stethoscope" : "checkmark.seal.fill")
                         .foregroundStyle(model.doctorChecked == nil ? Color.secondary : Color.green)
                 }
-                ForEach(model.doctor) { finding in row(finding) }
+                ForEach(model.doctor) { finding in
+                    FindingRow(finding: finding) { confirming = finding }
+                }
                 if !model.settings.doctorIgnored.isEmpty {
                     Button("Show \(model.settings.doctorIgnored.count) ignored") { model.showIgnoredFindings() }
                         .buttonStyle(.link)
@@ -79,8 +94,16 @@ struct DoctorPanel: View {
             Text("\(finding.detail) You can undo this on the Health page.")
         }
     }
+}
 
-    func row(_ finding: DoctorFinding) -> some View {
+/// One finding (the Doctor's or the Speed check's): what it is, its fix and Ignore. Fixes that move or
+/// stop things call `confirm` first; the rest run at once.
+struct FindingRow: View {
+    @Environment(AppModel.self) private var model
+    let finding: DoctorFinding
+    let confirm: () -> Void
+
+    var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: finding.symbol)
                 .font(.title3)
@@ -93,7 +116,7 @@ struct DoctorPanel: View {
             Spacer(minLength: 8)
             if let fix = finding.fix {
                 Button(fix.label) {
-                    if fix.asksFirst { confirming = finding } else { model.fix(finding) }
+                    if fix.asksFirst { confirm() } else { model.fix(finding) }
                 }
                 .buttonStyle(.glassProminent)
                 .disabled(model.isBusy("doctor-\(finding.id)"))
@@ -103,3 +126,4 @@ struct DoctorPanel: View {
         .padding(.vertical, 3)
     }
 }
+

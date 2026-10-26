@@ -107,7 +107,7 @@ extension Actions {
                 continue
             }
             let now = ctx.readings.preference(domain, key)
-            guard before != now else { continue }
+            guard !PrefValue.same(before, now) else { continue }
             if key == "_HIHideMenuBar" {
                 undo += await setMacMenuBarHidden(before?.boolValue ?? false)
                 continue

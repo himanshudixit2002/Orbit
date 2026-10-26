@@ -157,6 +157,24 @@ struct LiveProbeCheck {
         }
     }
 
+    /// What the Speed check finds on this Mac (it only reads).
+    @Test func speedOnThisMac() async throws {
+        let ctx = SystemContext.make(mode: .live)
+        let tracker = AppUsageTracker(readings: ctx.readings)
+        let probe = SpeedProbe(ctx)
+        _ = tracker.sample(frontmost: nil)
+        try await Task.sleep(for: .seconds(3))
+        let start = ContinuousClock.now
+        let facts = probe.facts(apps: tracker.sample(frontmost: nil))
+        print("PROBE speed took \(ContinuousClock.now - start); pressure \(facts.memoryPressure), swap \(facts.swapUsed / 1_048_576) MB, Siri on \(facts.siriOn) (\(Int(facts.siriSeconds)) s), instant \(facts.instantOn.map(\.rawValue).sorted())")
+        for app in facts.apps.prefix(6) {
+            print("PROBE speed:   \(app.name) \(app.memory / 1_048_576) MB, \(app.cpuPercent.map { String(format: "%.1f%%", $0) } ?? "–"), \(app.processes) processes")
+        }
+        for leftover in facts.leftovers { print("PROBE speed: leftover \(leftover.owner): \(leftover.paths)") }
+        for agent in probe.loginAgents() { print("PROBE speed: login agent \(agent.name) (\(agent.label)) at login \(agent.startsAtLogin)") }
+        for finding in SpeedCheck.findings(facts) { print("PROBE speed: [\(finding.severity)] \(finding.title) — \(finding.fix?.label ?? "no fix")") }
+    }
+
     /// What theme sync would change on this Mac (it only reads).
     @Test func themeSyncOnThisMac() throws {
         let ctx = SystemContext.make(mode: .live)

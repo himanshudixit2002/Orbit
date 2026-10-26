@@ -187,7 +187,11 @@ extension Actions {
             }
         case .refreshCheatSheet:
             return try await refreshCheatSheet(policy: policy)
-        case .open:
+        case .makeInstant:
+            return await setInstant(Set(SpeedTweak.Group.allCases), on: true)
+        case .quitApp(let path, let name):
+            return await quitApp(path: path, name: name)
+        case .open, .showInFinder, .openSettings:
             return ActionOutcome(ok: true, message: "")
         }
     }
