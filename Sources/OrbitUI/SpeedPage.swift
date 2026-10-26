@@ -33,7 +33,8 @@ extension AppModel {
             speedFacts = facts
             appUsage = facts.apps
             loginAgents = agents
-            speedFindings = SpeedCheck.findings(facts, ignored: Set(settings.doctorIgnored))
+            // Paused, the animations are back on purpose: no tip to take them out again.
+            speedFindings = SpeedCheck.findings(facts, ignored: Set(settings.doctorIgnored).union(paused == nil ? [] : ["speed-instant"]))
             speedChecked = Date()
             speedRunning = false
         }
@@ -68,7 +69,7 @@ extension AppModel {
     /// Looks for apps left in the background that keep the Mac busy (see `SpeedCheck.toNotify`) and
     /// sends a notice with Quit for each, once every 6 hours at most. It only reads; Quit asks politely.
     func checkHeavyApps() async {
-        guard !isPractice, !isSnapshot, settings.speed.heavyAppNotices else {
+        guard !isPractice, !isSnapshot, settings.speed.heavyAppNotices, paused == nil else {
             heavyBefore = []
             return
         }

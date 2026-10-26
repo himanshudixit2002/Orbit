@@ -630,6 +630,8 @@ public struct Actions: Sendable {
                     continue
                 }
                 await ctx.run(Commands.openApp(at: path, name: name, background: true))
+            case .pausedState(let paused):
+                ctx.store.setPaused(paused)
             case .arrangeWindows(let layout):
                 if await isRunning(.yabai) {
                     await arrange(layout)

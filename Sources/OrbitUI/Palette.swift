@@ -25,6 +25,13 @@ extension AppModel {
             items.append(PaletteItem(id: "undo", title: "Undo “\(last.title)”", subtitle: "Puts back what that change did",
                                      symbol: "arrow.uturn.backward", keywords: "undo revert back") { [weak self] in self?.undo(last.id) })
         }
+        if paused != nil {
+            items.append(PaletteItem(id: "pause", title: "Resume Orbit", subtitle: "Brings back \(pausedSummary)", symbol: "play.fill",
+                                     keywords: "resume unpause start everything back", action: command(.setPaused(false))))
+        } else {
+            items.append(PaletteItem(id: "pause", title: "Pause everything", subtitle: "Switches off all Orbit runs; one click brings it back",
+                                     symbol: "pause.fill", keywords: "pause stop disable everything off all", action: command(.setPaused(true))))
+        }
         for id in FeatureID.switchable where state(id) != .notInstalled {
             let on = state(id).isOn
             items.append(PaletteItem(id: "feature-\(id.rawValue)", title: "Turn \(on ? "off" : "on") \(id.inSentence)",

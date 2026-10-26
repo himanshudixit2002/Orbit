@@ -51,9 +51,12 @@ public struct OrbitSnapshot: Codable, Sendable, Equatable {
     public var modes: [Mode]
     public var activeMode: String?
     public var theme: ThemeID
+    /// When Orbit was paused (everything it runs switched off); nil while it isn't. Optional so a
+    /// snapshot written before pausing existed still reads.
+    public var pausedSince: Date?
 
     public init(written: Date = Date(), running: Bool = true, practice: Bool = false, features: [Feature] = [],
-                modes: [Mode] = [], activeMode: String? = nil, theme: ThemeID = .tokyoNight) {
+                modes: [Mode] = [], activeMode: String? = nil, theme: ThemeID = .tokyoNight, pausedSince: Date? = nil) {
         self.written = written
         self.running = running
         self.practice = practice
@@ -61,6 +64,7 @@ public struct OrbitSnapshot: Codable, Sendable, Equatable {
         self.modes = modes
         self.activeMode = activeMode
         self.theme = theme
+        self.pausedSince = pausedSince
     }
 
     /// How often a running Orbit rewrites it, so the widgets can tell it's still there.

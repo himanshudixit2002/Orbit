@@ -14,6 +14,8 @@ public enum OrbitCommand: Codable, Sendable, Hashable {
     case arrangeWindows(String)
     /// A fresh, thorough check of everything.
     case checkStatus
+    /// Switch off everything Orbit runs (true), or bring back what was on (false).
+    case setPaused(Bool)
     case open(OrbitDestination)
 
     /// What it does, mid-sentence: "turn off window tiling".
@@ -28,6 +30,7 @@ public enum OrbitCommand: Codable, Sendable, Hashable {
         case .sortDownloads: "sort your Downloads folder"
         case .arrangeWindows(let name): "arrange the windows as \"\(name)\""
         case .checkStatus: "check everything"
+        case .setPaused(let paused): paused ? "pause everything Orbit does" : "bring back what Orbit was doing"
         case .open(let destination):
             switch destination {
             case .page(let page): "open \(page.title)"
@@ -83,7 +86,7 @@ public struct OrbitReply: Sendable, Equatable {
 ///     orbit://page/monitor   orbit://setup   orbit://panel   orbit://palette
 ///     orbit://toggle/tiling   orbit://on/glow   orbit://off/menuBar
 ///     orbit://theme/nord   orbit://mode/focus   orbit://mode/stop   orbit://sort-downloads   orbit://check
-///     orbit://arrange/Coding
+///     orbit://arrange/Coding   orbit://pause   orbit://resume
 public enum OrbitLink {
     public static let schemes: Set<String> = ["orbit", "orbitdev"]
 
@@ -107,6 +110,8 @@ public enum OrbitLink {
             guard let argument, !argument.isEmpty else { return nil }
             return .arrangeWindows(argument)
         case "check": return .checkStatus
+        case "pause": return .setPaused(true)
+        case "resume": return .setPaused(false)
         default: return nil
         }
     }
@@ -131,6 +136,7 @@ public enum OrbitLink {
         case .sortDownloads: "sort-downloads"
         case .arrangeWindows(let name): name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(["/"])).map { "arrange/\($0)" }
         case .checkStatus: "check"
+        case .setPaused(let paused): paused ? "pause" : "resume"
         }
         let query = token.map { command.showsOrbit ? "" : "?token=\($0)" } ?? ""
         return path.flatMap { URL(string: "\(scheme)://\($0)\(query)") }

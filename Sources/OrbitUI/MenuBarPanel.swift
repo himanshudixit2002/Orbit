@@ -25,6 +25,16 @@ public struct MenuBarPanel: View {
                     .accessibilityLabel("Check again")
             }
 
+            HStack(spacing: 10) {
+                if model.paused != nil {
+                    Label("Paused", systemImage: "pause.circle.fill").font(.callout.weight(.semibold)).foregroundStyle(.orange)
+                } else {
+                    Text("Everything Orbit runs").font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                PauseButton().controlSize(.small)
+            }
+
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                 ForEach([FeatureID.tiling, .glow, .menuBar, .capsLock, .downloads, .terminalLook], id: \.self) { id in
                     let state = model.state(id)

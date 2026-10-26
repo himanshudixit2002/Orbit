@@ -8,6 +8,7 @@ struct OrbitWidgets: WidgetBundle {
     var body: some Widget {
         StatusWidget()
         ModesWidget()
+        PauseControl()
         TilingControl()
         GlowControl()
         MenuBarControl()

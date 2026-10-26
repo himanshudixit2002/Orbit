@@ -26,6 +26,8 @@ struct HomePage: View {
                 Text("Here's your Mac at a glance.").font(.title3).foregroundStyle(.secondary)
             }
 
+            PausedBanner()
+
             GlassPanel(padding: 22, glow: Color(model.palette.accent)) {
                 HStack(spacing: 24) {
                     ScoreRing(done: model.doneCount, total: model.coreFeatures.count)
@@ -37,10 +39,11 @@ struct HomePage: View {
                                 Button { model.showSetup = true } label: { Label("Guided setup", systemImage: "wand.and.stars") }
                                     .buttonStyle(.glassProminent)
                             }
-                            if let first = model.attention.first {
+                            if let first = model.attention.first, model.paused == nil {
                                 Button { model.fix(first) } label: { Label("Fix \(first.shortTitle.lowercased())", systemImage: "wrench.and.screwdriver.fill") }
                                     .buttonStyle(.glass)
                             }
+                            if model.paused == nil { PauseButton() }
                         }
                         .padding(.top, 4)
                     }

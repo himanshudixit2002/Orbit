@@ -129,6 +129,8 @@ public final class AppModel {
     var speedRunning = false
     var appUsage: [AppUsage] = []
     var loginAgents: [UserLoginAgent] = []
+    /// What was on when Orbit was paused (everything it runs switched off); nil while it isn't.
+    var paused: PausedState?
     /// The apps that were heavy at the heavy-app check's last look.
     @ObservationIgnored var heavyBefore: Set<String> = []
     private var activationObserver: NSObjectProtocol?
@@ -153,6 +155,7 @@ public final class AppModel {
             ctx.activity.record(ActivityRecord(.change, entry.title, ok: false, detail: entry.message, date: entry.date))
         }
         journal = ctx.store.journal
+        paused = ctx.store.paused
         modes = ModesModel(ctx: ctx)
         cleanup = CleanupModel(ctx: ctx)
         barFeeder = BarFeeder(ctx: ctx)
@@ -417,6 +420,8 @@ public final class AppModel {
         if saved != settings { settings = saved }
         let history = ctx.store.journal
         if history != journal { journal = history }
+        let pausedNow = ctx.store.paused
+        if pausedNow != paused { paused = pausedNow }
         let practice = ctx.practiceLog.all
         if practice != practiceLog { practiceLog = practice }
         exitWatcher?.watch(fresh.helperPIDs)
@@ -586,7 +591,7 @@ public final class AppModel {
         OrbitSnapshot(practice: isPractice,
                       features: coreFeatures.map { OrbitSnapshot.Feature(id: $0, state: OrbitSnapshot.State(state($0)), detail: state($0).detail) },
                       modes: settings.modes.map { OrbitSnapshot.Mode(id: $0.id, name: $0.name, symbol: $0.symbol) },
-                      activeMode: modes.active?.modeID, theme: settings.theme)
+                      activeMode: modes.active?.modeID, theme: settings.theme, pausedSince: paused?.since)
     }
 
     func publishSnapshot() {
@@ -619,7 +624,8 @@ public final class AppModel {
             await modes.stop()
             ctx.activity.record(ActivityRecord(.change, "Switched off \(name) mode", detail: reason.capitalizedFirst + "."))
         case .start(let id, _, let askFirst):
-            guard let mode = settings.modes.first(where: { $0.id == id }), modes.active?.modeID != id else { return }
+            // Paused, Orbit starts nothing by itself.
+            guard paused == nil, let mode = settings.modes.first(where: { $0.id == id }), modes.active?.modeID != id else { return }
             if askFirst {
                 notifier?.send(.modeSchedule, key: "schedule \(id)", title: "Start \(mode.name) mode?",
                                body: "It's time for \(mode.name) mode. \(mode.blurb)", every: 300) { [weak self] in

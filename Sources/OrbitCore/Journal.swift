@@ -63,6 +63,8 @@ public enum UndoAction: Codable, Sendable, Equatable {
     case arrangeWindows(WindowLayout)
     /// Open an app again that Orbit asked to quit.
     case reopenApp(path: String, name: String)
+    /// Put back whether Orbit was paused (and what Resume brings back); nil means it wasn't.
+    case pausedState(PausedState?)
 
     /// What this step puts back, so two changes that touched the same thing can be found.
     public var targets: [String] {
@@ -78,6 +80,7 @@ public enum UndoAction: Codable, Sendable, Equatable {
         case .brewService(let formula, _): ["service \(formula)"]
         case .arrangeWindows(let layout): layout.desktops.map { "desktop \($0.index)" }
         case .reopenApp(let path, _): ["app \(path)"]
+        case .pausedState: ["orbit paused"]
         }
     }
 }

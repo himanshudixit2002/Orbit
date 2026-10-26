@@ -93,6 +93,8 @@ extension Actions {
             return ActionOutcome(ok: false, message: "Orbit has no record of how things were before it.")
         }
         let undo = UndoRecorder.forThisTask(ctx.store)
+        // Back to before Orbit is more than a pause: nothing is left to resume.
+        undo += setPaused(nil)
         var domains = Set<String>()
         let lookedPrefs = preferencesLookedAt(baseline)
         for (domain, key) in WatchedPreferences.keys {

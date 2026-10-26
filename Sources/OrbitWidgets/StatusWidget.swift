@@ -90,7 +90,11 @@ struct StatusView: View {
 
     @ViewBuilder
     func footer(_ s: OrbitSnapshot) -> some View {
-        if !s.attention.isEmpty {
+        if s.pausedSince != nil {
+            Label("Paused", systemImage: "pause.circle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+        } else if !s.attention.isEmpty {
             Label("\(s.attention.count) need\(s.attention.count == 1 ? "s" : "") you", systemImage: "exclamationmark.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.orange)

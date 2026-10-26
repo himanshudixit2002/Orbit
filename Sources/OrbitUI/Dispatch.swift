@@ -63,6 +63,8 @@ extension AppModel {
         case .checkStatus:
             await refresh(deep: true)
             return statusSummary()
+        case .setPaused(let pause):
+            return pause ? await pauseOrbit(quiet: source.isBackground) : await resumeOrbit(quiet: source.isBackground)
         case .open(let destination):
             return show(destination)
         }
@@ -117,7 +119,7 @@ extension AppModel {
     func noticeNewAttention() -> [FeatureID] {
         let now = Set(attention)
         defer { lastAttention = now }
-        guard let before = lastAttention else { return [] }
+        guard let before = lastAttention, paused == nil else { return [] }
         let new = now.subtracting(before).sorted(by: { $0.rawValue < $1.rawValue }).filter { !reportedByWatchdog($0) }
         for id in new {
             notifier?.send(.attention, key: "attention \(id)", title: "\(id.title) needs your attention",
@@ -139,32 +141,10 @@ extension AppModel {
 
     /// The change behind a feature's switch: its busy key, its title in the history, and the work.
     func featureChange(_ id: FeatureID, on: Bool) -> (key: String, title: String, work: Work)? {
-        switch id {
-        case .tiling:
-            return ("tiling", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] in
-                try await actions.setTiling(on, policy: $0)
-            })
-        case .glow:
-            return ("glow", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] in
-                try await actions.setGlow(on, policy: $0)
-            })
-        case .menuBar:
-            return ("menuBar", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] in
-                try await actions.setMenuBar(on, policy: $0)
-            })
-        case .capsLock:
-            var keyboard = settings.keyboard
-            keyboard.capsLockEnabled = on
-            return ("keyboard", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions, keyboard] _ in
-                try await actions.applyKeyboard(keyboard)
-            })
-        case .downloads:
-            return ("downloads", "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] _ in
-                await actions.setDownloads(on)
-            })
-        case .raycast, .altTab, .ice, .syntaxHighlight, .terminalLook:
-            return nil
-        }
+        guard id.isSwitchable else { return nil }
+        return (id == .capsLock ? "keyboard" : id.rawValue, "Turned \(on ? "on" : "off") \(id.inSentence)", { [actions] in
+            try await actions.setFeature(id, on: on, policy: $0)
+        })
     }
 
     /// The change behind picking a theme.

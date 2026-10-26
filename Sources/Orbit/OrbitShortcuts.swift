@@ -27,6 +27,14 @@ struct OrbitShortcuts: AppShortcutsProvider {
             "Check my Mac with \(.applicationName)",
             "Ask \(.applicationName) how my Mac is"
         ], shortTitle: "Check Status", systemImageName: "heart.text.square.fill")
+        AppShortcut(intent: PauseOrbitIntent(), phrases: [
+            "Pause \(.applicationName)",
+            "Pause everything in \(.applicationName)"
+        ], shortTitle: "Pause Orbit", systemImageName: "pause.circle")
+        AppShortcut(intent: ResumeOrbitIntent(), phrases: [
+            "Resume \(.applicationName)",
+            "Bring back \(.applicationName)"
+        ], shortTitle: "Resume Orbit", systemImageName: "play.circle")
         AppShortcut(intent: OpenPageIntent(), phrases: [
             "Open \(\.$page) in \(.applicationName)",
             "Show \(.applicationName) \(\.$page)"

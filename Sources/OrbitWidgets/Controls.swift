@@ -16,6 +16,27 @@ struct FeatureValue: ControlValueProvider {
     }
 }
 
+struct PausedValue: ControlValueProvider {
+    var previewValue: Bool { false }
+
+    func currentValue() async throws -> Bool {
+        SharedStore.forThisApp.load()?.pausedSince != nil
+    }
+}
+
+/// One switch for everything Orbit does.
+struct PauseControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "com.himanshudixit.orbit.control.pause", provider: PausedValue()) { paused in
+            ControlWidgetToggle("Pause Orbit", isOn: paused, action: PauseSwitchIntent()) { paused in
+                Label(paused ? "Paused" : "Running", systemImage: paused ? "pause.circle.fill" : "play.circle")
+            }
+        }
+        .displayName("Pause Orbit")
+        .description("Switches off everything Orbit runs; switch it back to bring it all back.")
+    }
+}
+
 struct TilingControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.himanshudixit.orbit.control.tiling", provider: FeatureValue(feature: .tiling)) { on in

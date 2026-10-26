@@ -148,6 +148,45 @@ struct CheckStatusIntent: AppIntent {
     }
 }
 
+struct PauseOrbitIntent: AppIntent {
+    static let title: LocalizedStringResource = "Pause Orbit"
+    static let description: IntentDescription? = "Switches off everything Orbit runs (tiling, the glow, the new menu bar, Caps Lock superpowers, Downloads sorting, Instant Mac and the mode), remembering what was on."
+    static let supportedModes: IntentModes = .background
+    static let allowedExecutionTargets: IntentExecutionTargets = .main
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let reply = await OrbitBridge.run(.setPaused(true), source: .shortcut)
+        return .result(dialog: "\(try reply.checked())")
+    }
+}
+
+struct ResumeOrbitIntent: AppIntent {
+    static let title: LocalizedStringResource = "Resume Orbit"
+    static let description: IntentDescription? = "Switches back on what was on when Orbit was paused."
+    static let supportedModes: IntentModes = .background
+    static let allowedExecutionTargets: IntentExecutionTargets = .main
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let reply = await OrbitBridge.run(.setPaused(false), source: .shortcut)
+        return .result(dialog: "\(try reply.checked())")
+    }
+}
+
+/// The Control Center switch that pauses everything Orbit does.
+struct PauseSwitchIntent: SetValueIntent {
+    static let title: LocalizedStringResource = "Orbit Pause Switch"
+    static let isDiscoverable = false
+    static let supportedModes: IntentModes = .background
+    static let allowedExecutionTargets: IntentExecutionTargets = .main
+
+    @Parameter(title: "Paused") var value: Bool
+
+    func perform() async throws -> some IntentResult {
+        _ = try await OrbitBridge.run(.setPaused(value), source: .control).checked()
+        return .result()
+    }
+}
+
 struct OpenPageIntent: AppIntent {
     static let title: LocalizedStringResource = "Open Orbit Page"
     static let description: IntentDescription? = "Opens Orbit on one of its pages."
