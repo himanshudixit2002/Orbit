@@ -36,6 +36,22 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: downloads.appending(path: "report.pdf").path(percentEncoded: false)))
     }
 
+    @Test func theFirstLookCanWaitWhileTheMacStartsUp() async throws {
+        let ctx = try sandboxContext()
+        let report = ctx.paths.downloads.appending(path: "report.pdf")
+        try file(report, age: 120)
+        let sorter = InstantSorter(ctx: ctx)
+        await sorter.start(DownloadSettings(), firstLook: .milliseconds(800))
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(FileManager.default.fileExists(atPath: report.path(percentEncoded: false)))
+        for _ in 0..<40 where FileManager.default.fileExists(atPath: report.path(percentEncoded: false)) {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(!FileManager.default.fileExists(atPath: report.path(percentEncoded: false)))
+        #expect(FileManager.default.fileExists(atPath: ctx.paths.downloads.appending(path: "Documents/report.pdf").path(percentEncoded: false)))
+        await sorter.stop()
+    }
+
     @Test func rulesRewriteTheHourlySorterAndUndoPutsItBack() async throws {
         let ctx = try sandboxContext()
         let original = "#!/bin/zsh\necho old\n"

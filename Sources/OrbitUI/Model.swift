@@ -183,33 +183,45 @@ public final class AppModel {
         return "\(part), \(firstName)"
     }
 
+    /// Whether the Mac started moments ago (Orbit opening as a login item, say). macOS and every other
+    /// login item are busy then, so Orbit's own optional work waits a few minutes; its status check,
+    /// shortcuts and the menu bar's numbers don't, as they're light and keep the bar's scripts quieter.
+    static var macJustStarted: Bool { ProcessInfo.processInfo.systemUptime < 180 }
+
     func start() async {
+        let justStarted = Self.macJustStarted
         modes.resume()
         armModeAlarm()
         // Low on disk: a notice at most once a day.
         Task { [weak self] in
+            try? await Task.sleep(for: .seconds(justStarted ? 300 : 60))
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
                 self?.checkDiskSpace()
                 try? await Task.sleep(for: .seconds(6 * 3600), tolerance: .seconds(600))
             }
         }
         // The Doctor looks once Orbit has settled (it reads app bundles and folders).
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(20))
+            try? await Task.sleep(for: .seconds(justStarted ? 300 : 20))
             self?.runDoctor()
         }
         applyHotKey()
         publisher.startHeartbeat { [weak self] in self.map { $0.makeSnapshot() } }
         Task { _ = await readDockFinder() }
-        Task { await keepOpeningAtLogin() }
+        Task { [weak self] in
+            if justStarted { try? await Task.sleep(for: .seconds(120)) }
+            await self?.keepOpeningAtLogin()
+        }
         let wallpaper = NSScreen.main.flatMap { NSWorkspace.shared.desktopImageURL(for: $0)?.path(percentEncoded: false) }
         await actions.captureBaselineIfNeeded(wallpaper: wallpaper)
         actions.topUpBaseline()
         await refresh()
         watchForChanges()
         // Backups the undo history no longer points to go to the Trash, so they don't pile up over the months.
-        Task.detached(priority: .background) { [actions] in actions.clearUnneededBackups() }
+        Task.detached(priority: .background) { [actions] in
+            if justStarted { try? await Task.sleep(for: .seconds(600)) }
+            actions.clearUnneededBackups()
+        }
         startPolling()
         spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
@@ -666,8 +678,10 @@ public final class AppModel {
                 }
             }
         }
+        // Just after the Mac starts, the first look through Downloads waits until things calm down.
+        let firstLook: Duration = Self.macJustStarted ? .seconds(90) : .seconds(1)
         Task { [instantSorter] in
-            if wanted { await instantSorter.start(downloads); await instantSorter.update(downloads) } else { await instantSorter.stop() }
+            if wanted { await instantSorter.start(downloads, firstLook: firstLook); await instantSorter.update(downloads) } else { await instantSorter.stop() }
         }
     }
 

@@ -14,7 +14,9 @@ public actor InstantSorter {
 
     public init(ctx: SystemContext) { self.ctx = ctx }
 
-    public func start(_ settings: DownloadSettings) {
+    /// Starts watching ~/Downloads; what's already there is looked at after `firstLook`. Anything that
+    /// arrives meanwhile is looked at as usual.
+    public func start(_ settings: DownloadSettings, firstLook: Duration = .seconds(1)) {
         self.settings = settings
         guard !running else { return }
         running = true
@@ -22,7 +24,7 @@ public actor InstantSorter {
         watcher = FileWatcher(folders: [ctx.paths.downloads]) { [weak self] _ in
             Task { await self?.lookSoon(after: .seconds(1)) }
         }
-        lookSoon(after: .seconds(1))
+        lookSoon(after: firstLook)
     }
 
     public func update(_ settings: DownloadSettings) { self.settings = settings }
