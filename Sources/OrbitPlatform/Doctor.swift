@@ -191,6 +191,8 @@ extension Actions {
             return await setInstant(Set(SpeedTweak.Group.allCases), on: true)
         case .quitApp(let path, let name):
             return await quitApp(path: path, name: name)
+        case .stopCommand(let pid, let name, let path):
+            return stopCommand(pid: pid, name: name, path: path)
         case .open, .showInFinder, .openSettings:
             return ActionOutcome(ok: true, message: "")
         }

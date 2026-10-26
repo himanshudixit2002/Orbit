@@ -8,7 +8,7 @@ import UserNotifications
 @MainActor
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     enum Kind: String, CaseIterable {
-        case failed, keepsStopping, attention, changed, edited, lowDisk, modeSchedule, heavyApp
+        case failed, keepsStopping, attention, changed, edited, lowDisk, modeSchedule, heavyApp, busyCommand
 
         /// The button that does something about it (Open Orbit is always there too).
         var act: String? {
@@ -20,6 +20,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             case .lowDisk: "Clean Up"
             case .modeSchedule: "Start"
             case .heavyApp: "Quit"
+            case .busyCommand: "Stop"
             case .keepsStopping: nil
             }
         }

@@ -49,6 +49,8 @@ public enum DoctorFix: Sendable, Equatable {
     case makeInstant
     /// Ask an app to quit (it can save first; never forced).
     case quitApp(path: String, name: String)
+    /// Ask a command run in a terminal to stop (it can tidy up first); the terminal stays open.
+    case stopCommand(pid: Int32, name: String, path: String)
     /// Show files in Finder for the user to deal with (deleting system files needs their password).
     case showInFinder([String])
     /// Open a System Settings pane for a setting only the user can change.
@@ -65,6 +67,7 @@ public enum DoctorFix: Sendable, Equatable {
         case .refreshCheatSheet: "Update it"
         case .makeInstant: "Make it instant"
         case .quitApp(_, let name): "Quit \(name)"
+        case .stopCommand(_, let name, _): "Stop \(name)"
         case .showInFinder: "Show in Finder"
         case .openSettings(let pane): "Open \(pane.title)"
         }
@@ -83,6 +86,7 @@ public enum DoctorFix: Sendable, Equatable {
         case .refreshCheatSheet: "Updated the cheat sheet"
         case .makeInstant: "Made the Mac feel instant"
         case .quitApp(_, let name): "Asked \(name) to quit"
+        case .stopCommand(_, let name, _): "Asked \(name) to stop"
         case .showInFinder: "Showed the leftover files in Finder"
         case .openSettings(let pane): "Opened \(pane.title)"
         }
@@ -91,7 +95,7 @@ public enum DoctorFix: Sendable, Equatable {
     /// Fixes that move things or stop things are confirmed first.
     public var asksFirst: Bool {
         switch self {
-        case .trash, .stopService, .removeHyperKey, .quitApp: true
+        case .trash, .stopService, .removeHyperKey, .quitApp, .stopCommand: true
         case .installTmuxPlugins, .open, .refreshCheatSheet, .makeInstant, .showInFinder, .openSettings: false
         }
     }

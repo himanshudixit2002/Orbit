@@ -61,6 +61,23 @@ extension Actions {
         }
         return ActionOutcome(ok: true, message: "\(name) has quit.", undo: [.reopenApp(path: target, name: name)])
     }
+
+    /// Asks a command run in a terminal to stop (it can tidy up first), only if that same program still
+    /// runs under that number as one of your own processes. The terminal stays open. In practice mode
+    /// it's only written down.
+    public func stopCommand(pid: Int32, name: String, path: String) -> ActionOutcome {
+        guard ctx.readings.processStats().contains(where: { $0.pid == pid && $0.path == path }) else {
+            return ActionOutcome(ok: true, message: "\(name) isn't running any more.")
+        }
+        guard ctx.mode == .live else {
+            ctx.practiceLog.record("Would ask \(name) to stop", "kill -TERM \(pid)")
+            return ActionOutcome(ok: true, message: "Practice: \(name) wasn't really asked to stop.")
+        }
+        guard kill(pid, SIGTERM) == 0 else {
+            return ActionOutcome(ok: false, message: "\(name) couldn't be asked to stop (it may have ended already).")
+        }
+        return ActionOutcome(ok: true, message: "Asked \(name) to stop. Its terminal stays open.")
+    }
 }
 
 /// What the Speed check and the heavy-app notices need between looks: each process's processor time

@@ -79,6 +79,32 @@ import Testing
         #expect(app.inUse)
     }
 
+    @Test func aBusyCommandInATerminalIsTheOneToStopNotTheTerminal() throws {
+        let warp = "/Applications/Warp.app"
+        let before: [Int32: Double] = [10: 5, 11: 1, 12: 100, 13: 50]
+        let stats = [
+            stat(10, "\(warp)/Contents/MacOS/stable", memory: 300, cpu: 5.5),
+            stat(11, "/bin/zsh", parent: 10, cpu: 1),
+            stat(12, "/opt/homebrew/bin/node", parent: 11, memory: 400, cpu: 157),
+            stat(13, "/opt/homebrew/bin/esbuild", parent: 12, cpu: 53)
+        ]
+        var terminal = try #require(AppGrouping.apps(stats, before: before, interval: 60).first)
+        #expect(terminal.name == "Warp" && terminal.processes == 4)
+        let command = try #require(terminal.busiestCommand)
+        #expect(command.pid == 12 && command.name == "node" && command.path == "/opt/homebrew/bin/node")
+        #expect(abs(command.cpuPercent - 95) < 0.001)   // 57 s of processor over 60 s
+        terminal.idleMinutes = 45
+        #expect(SpeedCheck.heavy([terminal], memoryTight: false) == [terminal])
+        let finding = SpeedCheck.heavyFinding(terminal)
+        #expect(finding.title == "node, running in Warp, keeps the processor busy")
+        #expect(finding.fix == .stopCommand(pid: 12, name: "node", path: "/opt/homebrew/bin/node"))
+        // Busy by itself, or big: a terminal is never offered Quit (that would end every session in it).
+        terminal.busiestCommand = nil
+        terminal.cpuPercent = 60
+        terminal.memory = 3_000_000_000
+        #expect(SpeedCheck.heavy([terminal], memoryTight: true).isEmpty)
+    }
+
     @Test func leftoversAreHelpersWhoseAppIsGone() {
         let items = [
             LaunchItem(label: "com.docker.vmnetd", plist: "/Library/LaunchDaemons/com.docker.vmnetd.plist", program: "/Library/PrivilegedHelperTools/com.docker.vmnetd", programExists: true),

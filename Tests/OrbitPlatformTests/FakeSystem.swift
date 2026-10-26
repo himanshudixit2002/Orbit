@@ -205,14 +205,14 @@ final class FakePreferences: PreferenceWriting {
 
 /// A live-mode context shut inside a throwaway home: file changes stay in it, commands go to `system`,
 /// and every tool counts as installed. Preference writes are only recorded, unless `prefs` is given:
-/// then they go there and are read back from there.
-func sandboxContext(_ system: FakeSystem = FakeSystem(), prefs: FakePreferences? = nil) throws -> SystemContext {
+/// then they go there and are read back from there. `stats` is the process list it reads.
+func sandboxContext(_ system: FakeSystem = FakeSystem(), prefs: FakePreferences? = nil, stats: [ProcessStat] = []) throws -> SystemContext {
     let paths = try tempHome()
     let log = PracticeLog()
     var readings = SystemReadings()
     readings.installed = { _ in true }
     readings.processes = { system.processes() }
-    readings.processStats = { [] }
+    readings.processStats = { stats }
     readings.runningApps = { [] }
     readings.backgroundBlocked = { _ in false }
     if let prefs { readings.preference = { prefs.read($0, $1) } }

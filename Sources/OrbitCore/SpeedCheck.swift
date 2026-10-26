@@ -22,6 +22,22 @@ public struct ProcessStat: Sendable, Equatable {
     }
 }
 
+/// A command run in a terminal and its share of the processor over the last interval.
+public struct BusyCommand: Sendable, Equatable {
+    public var pid: Int32
+    public var name: String
+    public var path: String
+    /// Percent of one processor core.
+    public var cpuPercent: Double
+
+    public init(pid: Int32, name: String, path: String, cpuPercent: Double) {
+        self.pid = pid
+        self.name = name
+        self.path = path
+        self.cpuPercent = cpuPercent
+    }
+}
+
 /// An app and what it holds now, across all its processes (a browser's or an Electron app's helpers
 /// count toward it).
 public struct AppUsage: Sendable, Equatable, Identifiable {
@@ -38,9 +54,11 @@ public struct AppUsage: Sendable, Equatable, Identifiable {
     /// Playing sound or video, or keeping the Mac awake for work it's doing: in use even when it
     /// isn't in front.
     public var inUse = false
+    /// For a terminal: the command run in it that used the most processor (shells aside).
+    public var busiestCommand: BusyCommand?
 
     public init(name: String, path: String, memory: UInt64, cpuPercent: Double? = nil, processes: Int = 1,
-                isFrontmost: Bool = false, idleMinutes: Double? = nil, inUse: Bool = false) {
+                isFrontmost: Bool = false, idleMinutes: Double? = nil, inUse: Bool = false, busiestCommand: BusyCommand? = nil) {
         self.name = name
         self.path = path
         self.memory = memory
@@ -49,6 +67,7 @@ public struct AppUsage: Sendable, Equatable, Identifiable {
         self.isFrontmost = isFrontmost
         self.idleMinutes = idleMinutes
         self.inUse = inUse
+        self.busiestCommand = busiestCommand
     }
 
     public var id: String { path }
@@ -69,6 +88,16 @@ public enum AppGrouping {
     /// Application Support (a command-line tool shipped as an app, a helper).
     static func isRegularApp(_ bundle: String) -> Bool {
         bundle.contains("/Applications/") && !bundle.contains(".app/")
+    }
+
+    /// Terminals: what runs in them is the user's own commands, so a busy one is the command's doing,
+    /// and quitting the terminal would end every session in it.
+    static let terminals: Set<String> = ["Terminal.app", "iTerm.app", "Warp.app", "Ghostty.app", "Alacritty.app", "kitty.app",
+                                         "WezTerm.app", "Hyper.app", "Tabby.app", "Rio.app"]
+    static let shells: Set<String> = ["zsh", "bash", "sh", "fish", "nu", "tcsh", "ksh", "dash", "login", "-zsh", "-bash"]
+
+    public static func isTerminal(_ bundle: String) -> Bool {
+        terminals.contains(URL(fileURLWithPath: bundle).lastPathComponent)
     }
 
     /// The app a process belongs to: the regular app it lives in, else the nearest regular app among
@@ -102,7 +131,12 @@ public enum AppGrouping {
             if let before, interval > 0 {
                 // A process that wasn't there before counts from now, so a restart can't look like a spike.
                 let used = max(0, stat.cpuTime - (before[stat.pid] ?? stat.cpuTime))
-                usage.cpuPercent = (usage.cpuPercent ?? 0) + used / interval * 100
+                let percent = used / interval * 100
+                usage.cpuPercent = (usage.cpuPercent ?? 0) + percent
+                if isTerminal(bundle), Self.bundle(of: stat.path) != bundle, !shells.contains(stat.name),
+                   percent > (usage.busiestCommand?.cpuPercent ?? 0) {
+                    usage.busiestCommand = BusyCommand(pid: stat.pid, name: stat.name, path: stat.path, cpuPercent: percent)
+                }
             }
             groups[bundle] = usage
         }
@@ -208,8 +242,12 @@ public enum SpeedCheck {
     /// a lot of it. Plenty of free memory means a big app costs nothing, so it isn't flagged then.
     public static func heavy(_ apps: [AppUsage], memoryTight: Bool) -> [AppUsage] {
         apps.filter { app in
-            guard quittable(app) else { return false }
             let idle = app.idleMinutes ?? 0
+            // A terminal itself is light: what keeps it busy is a command run in it, and that's the one to stop.
+            if AppGrouping.isTerminal(app.path) {
+                return !app.isFrontmost && !app.inUse && (app.busiestCommand?.cpuPercent ?? 0) >= heavyCPU && idle >= busyIdleMinutes
+            }
+            guard quittable(app) else { return false }
             let busy = (app.cpuPercent ?? 0) >= heavyCPU && idle >= busyIdleMinutes
             let big = memoryTight && app.memory >= heavyMemory && idle >= bigIdleMinutes
             return busy || big
@@ -267,15 +305,24 @@ public enum SpeedCheck {
         return found.filter { !ignored.contains($0.id) }.sorted { ($0.severity, $0.title) < ($1.severity, $1.title) }
     }
 
-    /// An app you aren't using that keeps the Mac busy, with Quit (the Speed page and the notice say the same).
+    /// An app you aren't using that keeps the Mac busy, with Quit; for a terminal, the command keeping
+    /// it busy, with Stop (the Speed page and the notice say the same).
     public static func heavyFinding(_ app: AppUsage) -> DoctorFinding {
-        let busy = (app.cpuPercent ?? 0) >= heavyCPU
         let idle = Int(app.idleMinutes ?? 0)
+        let away = idle >= 120 ? "\(idle / 60) hours" : "\(idle) minutes"
+        if AppGrouping.isTerminal(app.path), let command = app.busiestCommand {
+            return DoctorFinding(
+                id: "speed-heavy-\(app.path)", severity: .tidy, symbol: "terminal",
+                title: "\(command.name), running in \(app.name), keeps the processor busy",
+                detail: "It uses \(Int(command.cpuPercent))% of a core, and \(app.name) hasn't been in front for \(away). Stop it if you don't need it running; \(app.name) stays open.",
+                fix: .stopCommand(pid: command.pid, name: command.name, path: command.path))
+        }
+        let busy = (app.cpuPercent ?? 0) >= heavyCPU
         return DoctorFinding(
             id: "speed-heavy-\(app.path)", severity: .tidy, symbol: busy ? "cpu" : "memorychip",
             title: busy ? "\(app.name) keeps the processor busy while you're not using it"
                         : "\(app.name) holds \(bytes(Int64(app.memory))) while you're not using it",
-            detail: "It hasn't been in front for \(idle >= 120 ? "\(idle / 60) hours" : "\(idle) minutes")\(busy ? ", yet it uses \(Int(app.cpuPercent ?? 0))% of a core" : ""). Quitting it frees that; it can save first.",
+            detail: "It hasn't been in front for \(away)\(busy ? ", yet it uses \(Int(app.cpuPercent ?? 0))% of a core" : ""). Quitting it frees that; it can save first.",
             fix: .quitApp(path: app.path, name: app.name))
     }
 

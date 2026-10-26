@@ -59,6 +59,15 @@ extension AppModel {
         }
     }
 
+    func stopCommand(_ command: BusyCommand) {
+        Task {
+            await performNow("stop-\(command.pid)", "Asked \(command.name) to stop") { [actions] _ in
+                actions.stopCommand(pid: command.pid, name: command.name, path: command.path)
+            }
+            await refreshAppUsage()
+        }
+    }
+
     func setStartsAtLogin(_ agent: UserLoginAgent, _ on: Bool) {
         Task {
             await performNow("agent-\(agent.label)", "\(agent.name) \(on ? "starts" : "stopped starting") at login") { [actions] _ in
@@ -85,8 +94,13 @@ extension AppModel {
         heavyBefore = heavyNow
         for app in notify {
             let finding = SpeedCheck.heavyFinding(app)
-            notifier?.send(.heavyApp, key: "heavy \(app.path)", title: finding.title, body: finding.detail,
-                           page: .speed, every: 6 * 3600) { [weak self] in self?.quitApp(app) }
+            if let command = app.busiestCommand, AppGrouping.isTerminal(app.path) {
+                notifier?.send(.busyCommand, key: "heavy \(app.path)", title: finding.title, body: finding.detail,
+                               page: .speed, every: 6 * 3600) { [weak self] in self?.stopCommand(command) }
+            } else {
+                notifier?.send(.heavyApp, key: "heavy \(app.path)", title: finding.title, body: finding.detail,
+                               page: .speed, every: 6 * 3600) { [weak self] in self?.quitApp(app) }
+            }
         }
     }
 
@@ -247,6 +261,7 @@ struct AppUsageList: View {
     func status(_ app: AppUsage) -> String {
         if app.isFrontmost { return "In front" }
         if app.inUse { return "In use" }
+        if let command = app.busiestCommand, command.cpuPercent >= SpeedCheck.heavyCPU { return "Busy running \(command.name)" }
         if app.isApple { return "Part of macOS" }
         let idle = Int(app.idleMinutes ?? 0)
         return idle < 2 ? "Just used" : idle < 120 ? "Not used for \(idle) min" : "Not used for \(idle / 60) h"

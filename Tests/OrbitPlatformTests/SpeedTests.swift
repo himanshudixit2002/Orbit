@@ -92,6 +92,30 @@ import Testing
     }
 }
 
+@Suite struct StopCommandTests {
+    // A number no process can have: should the check ever let a wrong one through, nothing is hit.
+    let nobody = Int32.max
+
+    @Test func onlyThatSameProgramIsAskedToStop() throws {
+        let node = ProcessStat(pid: nobody, parent: 1, name: "node", path: "/opt/homebrew/bin/node", memory: 1, cpuTime: 1)
+        let ctx = try sandboxContext(stats: [node])
+        // That number runs something else now (the command ended and the number came round again).
+        let other = Actions(ctx).stopCommand(pid: nobody, name: "node", path: "/usr/bin/python3")
+        #expect(other.ok && other.message == "node isn't running any more.")
+        // The same program: asked. No such process really exists, so macOS says no.
+        let asked = Actions(ctx).stopCommand(pid: nobody, name: "node", path: "/opt/homebrew/bin/node")
+        #expect(!asked.ok && asked.message.hasPrefix("node couldn't be asked to stop"))
+    }
+
+    @Test func practiceOnlyWritesItDown() throws {
+        let ctx = SystemContext.make(mode: .practice, paths: try tempHome())
+        let me = try #require(ProcessStat.all().first { $0.pid == getpid() })
+        let outcome = Actions(ctx).stopCommand(pid: me.pid, name: me.name, path: me.path)
+        #expect(outcome.ok && outcome.message.hasPrefix("Practice:"))
+        #expect(ctx.practiceLog.all.contains { $0.summary == "Would ask \(me.name) to stop" })
+    }
+}
+
 @Suite struct SpeedProbeTests {
     @Test func theTrackerKnowsProcessorUseAndIdleTime() throws {
         var readings = SystemReadings()
