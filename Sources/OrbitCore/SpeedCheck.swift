@@ -227,6 +227,9 @@ public enum SpeedCheck {
     public static let busyIdleMinutes = 30.0
     public static let bigIdleMinutes = 60.0
     public static let siriSeconds = 30.0
+    /// Siri's and Apple Intelligence's own processes (those Orbit can see into: they run as you).
+    public static let siriProcesses: Set<String> = ["Siri AI", "Siri", "sirittsd", "corespeechd", "siriactionsd", "siriknowledged",
+                                                    "siriinferenced", "assistantd"]
     public static let tightSwap: UInt64 = 2_048 * 1_048_576
 
     /// Apps Orbit may offer to quit: not part of macOS, not Orbit or Finder, not in front or in use.

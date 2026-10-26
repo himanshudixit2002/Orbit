@@ -22,6 +22,7 @@ public final class StateStore: Sendable {
         var inflight: [InflightChange] = []
         var activeMode: ModeRecord?
         var paused: PausedState?
+        var startups: [StartupRecord] = []
         var linkToken: String?
     }
     private let state: Locked<State>
@@ -43,6 +44,7 @@ public final class StateStore: Sendable {
         loaded.inflight = Self.loadEach(InflightChange.self, root.appending(path: "inflight.json"))
         loaded.activeMode = Self.load(ModeRecord?.self, root.appending(path: "active-mode.json")) ?? nil
         loaded.paused = Self.load(PausedState?.self, root.appending(path: "paused.json")) ?? nil
+        loaded.startups = Self.loadEach(StartupRecord.self, root.appending(path: "startups.json"))
         baselineUnreadable = loaded.baseline == nil && FileManager.default.fileExists(atPath: Self.setAsidePath(baselineFile))
         state = Locked(loaded)
     }
@@ -279,6 +281,16 @@ public final class StateStore: Sendable {
 
     /// What was on when Orbit was paused; nil while it isn't paused.
     public var paused: PausedState? { state.withLock { $0.paused } }
+
+    /// The restarts Orbit has timed, oldest first.
+    public var startups: [StartupRecord] { state.withLock { $0.startups } }
+
+    public func addStartup(_ record: StartupRecord) {
+        state.withLock { s in
+            s.startups = StartupTimer.adding(record, to: s.startups)
+            save(s.startups, "startups.json")
+        }
+    }
 
     public func setPaused(_ paused: PausedState?) {
         state.withLock { s in

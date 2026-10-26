@@ -157,6 +157,17 @@ struct LiveProbeCheck {
         }
     }
 
+    /// When this Mac started, when you logged in, and what has used the processor most since (it only reads).
+    @Test func startupOnThisMac() throws {
+        let booted = try #require(StartupProbe.bootTime())
+        let login = StartupProbe.loginTime()
+        print("PROBE startup: booted \(booted), logged in \(login.map { "\($0)" } ?? "unknown")",
+              login.map { "(\(SpeedCheck.duration($0.timeIntervalSince(booted))) after)" } ?? "")
+        for use in StartupTimer.busiest(SystemContext.make(mode: .live).readings.processStats(), top: 8) {
+            print("PROBE startup:   \(use.name) \(SpeedCheck.duration(use.seconds))")
+        }
+    }
+
     /// What the Speed check finds on this Mac (it only reads).
     @Test func speedOnThisMac() async throws {
         let ctx = SystemContext.make(mode: .live)

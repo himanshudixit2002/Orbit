@@ -116,6 +116,23 @@ import Testing
     }
 }
 
+@Suite struct StartupStoreTests {
+    @Test func restartsAreKeptAcrossLaunches() throws {
+        let ctx = try sandboxContext()
+        let booted = Date(timeIntervalSince1970: 1_800_000_000)
+        ctx.store.addStartup(StartupRecord(bootedAt: booted, loginAt: booted.addingTimeInterval(23), calmAt: booted.addingTimeInterval(150),
+                                           busiest: [.init(name: "Siri", seconds: 100)]))
+        #expect(ctx.store.startups.count == 1)
+        #expect(StateStore(root: ctx.store.root).startups == ctx.store.startups)
+    }
+
+    @Test func thisMacsStartIsKnown() throws {
+        let booted = try #require(StartupProbe.bootTime())
+        // The clock runs on while the Mac sleeps and uptime doesn't; the kernel notes its start a few seconds in.
+        #expect(booted < Date() && Date().timeIntervalSince(booted) >= ProcessInfo.processInfo.systemUptime - 60)
+    }
+}
+
 @Suite struct SpeedProbeTests {
     @Test func theTrackerKnowsProcessorUseAndIdleTime() throws {
         var readings = SystemReadings()

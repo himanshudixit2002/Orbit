@@ -104,6 +104,30 @@ extension AppModel {
         }
     }
 
+    /// Times this restart (Orbit opens at login): from macOS starting until the Mac goes calm after
+    /// login, and what kept it busy until then. A look at the processor every 10 seconds (a tenth of a
+    /// millisecond each) for at most 15 minutes after login, then it's saved for the Speed page.
+    func timeStartup() async {
+        guard let booted = StartupProbe.bootTime(),
+              !ctx.store.startups.contains(where: { abs($0.bootedAt.timeIntervalSince(booted)) < 1 }) else { return }
+        // A login from before this startup is an old record: Orbit opening is the nearest thing then.
+        let login = StartupProbe.loginTime().flatMap { $0 >= booted ? $0 : nil } ?? Date()
+        let sampler = StatsSampler()
+        _ = sampler.cpuAndMemory()
+        var looks: [(at: Date, cpu: Double)] = []
+        var calm: Date?
+        while calm == nil, Date().timeIntervalSince(login) < StartupTimer.watchFor {
+            try? await Task.sleep(for: .seconds(StartupTimer.every), tolerance: .seconds(1))
+            guard !Task.isCancelled else { return }
+            if let cpu = sampler.cpuAndMemory().cpu { looks.append((Date(), cpu)) }
+            calm = StartupTimer.calm(looks)
+        }
+        let readings = ctx.readings
+        let stats = await Task.detached(priority: .utility) { readings.processStats() }.value
+        ctx.store.addStartup(StartupRecord(bootedAt: booted, loginAt: login, calmAt: calm, busiest: StartupTimer.busiest(stats)))
+        startups = ctx.store.startups
+    }
+
     func setHeavyAppNotices(_ on: Bool) {
         ctx.store.updateSettings { $0.speed.heavyAppNotices = on }
         settings = ctx.store.settings
@@ -156,6 +180,8 @@ struct SpeedPage: View {
             AppUsageList()
             SectionTitle(text: "Starts with your Mac")
             LoginAgentsPanel()
+            SectionTitle(text: "Restarts")
+            RestartPanel()
             SectionTitle(text: "macOS's own background work")
             AppleWorkPanel()
         }
@@ -195,8 +221,51 @@ struct SpeedFindingsPanel: View {
                             presenting: confirming) { finding in
             Button(finding.fix?.label ?? "Fix") { model.fix(finding) }
             Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("It's asked to quit as if you chose Quit: it can save first, and it's never forced. Undo opens it again.")
+        } message: { finding in
+            Text(Self.confirmation(finding.fix))
+        }
+    }
+
+    static func confirmation(_ fix: DoctorFix?) -> String {
+        if case .stopCommand(_, let name, _) = fix {
+            return "\(name) is asked to stop: it can tidy up first, and its terminal stays open. There's no Undo: run it again when you need it."
+        }
+        return "It's asked to quit as if you chose Quit: it can save first, and it's never forced. Undo opens it again."
+    }
+}
+
+/// How long the last restart took to be calm, timed by Orbit, against the one before, and what kept
+/// the Mac busy until then.
+struct RestartPanel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                if let last = model.startups.last {
+                    HStack(alignment: .firstTextBaseline) {
+                        Label(StartupTimer.total(last).map { "Calm \(SpeedCheck.duration($0)) after it started" } ?? "Still busy long after it started",
+                              systemImage: "power")
+                            .font(.title3.weight(.semibold))
+                        Spacer()
+                        Text(last.bootedAt.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
+                    }
+                    Text(StartupTimer.summary(last))
+                    if let compared = StartupTimer.comparison(last, before: model.startups.dropLast().last) {
+                        Text(compared).foregroundStyle(.secondary)
+                    }
+                    if !last.busiest.isEmpty {
+                        Text("Used the processor most until then: " + last.busiest.map { "\($0.name) \(SpeedCheck.duration($0.seconds))" }.joined(separator: ", ")
+                             + ". Only what runs as you is counted: Orbit can't see into macOS's system-wide work.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Label("Orbit times your next restart", systemImage: "power").font(.title3.weight(.semibold))
+                    Text("How long macOS takes to start and log you in, how soon after that the Mac is calm, and what kept it busy. It's one look every 10 seconds, only in the first minutes after a restart.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

@@ -140,10 +140,6 @@ public struct SpeedProbe: Sendable {
                                                          ctx.paths.home.appending(path: "Applications")]
     }
 
-    /// Siri's and Apple Intelligence's own processes (those Orbit can see into: they run as you).
-    static let siriProcesses: Set<String> = ["Siri AI", "Siri", "sirittsd", "corespeechd", "siriactionsd", "siriknowledged",
-                                             "siriinferenced", "assistantd"]
-
     public func facts(apps: [AppUsage]) -> SpeedFacts {
         var facts = SpeedFacts()
         let sample = StatsSampler().sample()
@@ -153,7 +149,7 @@ public struct SpeedProbe: Sendable {
         facts.swapUsed = StatsSampler.swapUsed()
         facts.apps = apps
         facts.siriOn = PrefValue.same(ctx.readings.preference("com.apple.assistant.support", "Assistant Enabled"), .bool(true))
-        facts.siriSeconds = ctx.readings.processStats().filter { Self.siriProcesses.contains($0.name) }.reduce(0) { $0 + $1.cpuTime }
+        facts.siriSeconds = ctx.readings.processStats().filter { SpeedCheck.siriProcesses.contains($0.name) }.reduce(0) { $0 + $1.cpuTime }
         facts.leftovers = Leftovers.find(systemLaunchItems(), installedApps: installedApps())
         facts.instantOn = SpeedTweak.groupsOn { ctx.readings.preference($0, $1) }
         return facts

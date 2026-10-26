@@ -131,6 +131,8 @@ public final class AppModel {
     var loginAgents: [UserLoginAgent] = []
     /// What was on when Orbit was paused (everything it runs switched off); nil while it isn't.
     var paused: PausedState?
+    /// The restarts Orbit has timed, oldest first.
+    var startups: [StartupRecord] = []
     /// The apps that were heavy at the heavy-app check's last look.
     @ObservationIgnored var heavyBefore: Set<String> = []
     private var activationObserver: NSObjectProtocol?
@@ -156,6 +158,7 @@ public final class AppModel {
         }
         journal = ctx.store.journal
         paused = ctx.store.paused
+        startups = ctx.store.startups
         modes = ModesModel(ctx: ctx)
         cleanup = CleanupModel(ctx: ctx)
         barFeeder = BarFeeder(ctx: ctx)
@@ -214,6 +217,9 @@ public final class AppModel {
         // Paused, the mode that's on doesn't keep the Mac awake until Orbit is resumed.
         if paused == nil { modes.resume() }
         armModeAlarm()
+        if justStarted, !isPractice, !isSnapshot {
+            Task { [weak self] in await self?.timeStartup() }
+        }
         // Low on disk: a notice at most once a day.
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(justStarted ? 300 : 60))

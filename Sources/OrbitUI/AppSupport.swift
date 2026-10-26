@@ -95,6 +95,15 @@ public enum SnapshotHarness {
         if scenario == "all-on" || scenario == "paused" {
             model.modes.active = ModeRecord(modeID: "work")
         }
+        if scenario == "all-on" {
+            let booted = Date().addingTimeInterval(-3 * 3600)
+            model.startups = [
+                StartupRecord(bootedAt: booted.addingTimeInterval(-86_400), loginAt: booted.addingTimeInterval(-86_377),
+                              calmAt: booted.addingTimeInterval(-86_100), busiest: []),
+                StartupRecord(bootedAt: booted, loginAt: booted.addingTimeInterval(23), calmAt: booted.addingTimeInterval(118),
+                              busiest: [.init(name: "Claude", seconds: 31), .init(name: "Spotlight", seconds: 12), .init(name: "Siri", seconds: 4)])
+            ]
+        }
         if scenario == "paused" {
             model.paused = PausedState(features: PausePlan.order, instant: SpeedTweak.Group.allCases, modeID: "work",
                                        since: Date().addingTimeInterval(-25 * 60))
@@ -138,6 +147,9 @@ public enum SnapshotHarness {
         }
         render(TidyPlanSheet(plan: plan).environment(model), size: CGSize(width: 580, height: 560), appearance: appearance,
                to: folder.appending(path: "\(prefix)-tidy.png"))
+
+        render(RestartPanel().padding(20).environment(model), size: CGSize(width: 860, height: 240), appearance: appearance,
+               to: folder.appending(path: "\(prefix)-restarts.png"))
     }
 
     static func render<V: View>(_ view: V, size: CGSize, appearance: NSAppearance?, to url: URL) {
