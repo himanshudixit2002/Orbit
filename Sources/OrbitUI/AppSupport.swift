@@ -47,8 +47,26 @@ extension AppModel {
             return
         }
         NSApp.setActivationPolicy(.regular)
+        mainWindowShown = true
         openWindow(id: "main")
         NSApp.activate()
+    }
+
+    /// The main window came forward, however it was opened (the Dock, the Window menu, a link).
+    public func mainWindowAppeared() {
+        if !mainWindowShown { mainWindowShown = true }
+    }
+
+    /// The main window closed. SwiftUI keeps the window for next time, and with it everything it drew
+    /// (about 70 MB), so it now draws nothing; once SwiftUI has let go, the freed memory goes back to macOS.
+    public func mainWindowClosed() {
+        mainWindowShown = false
+        appUsage = []
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard self?.mainWindowShown == false else { return }
+            malloc_zone_pressure_relief(nil, 0)
+        }
     }
 
     func windowOpenerReady(_ action: OpenWindowAction) {
@@ -57,6 +75,20 @@ extension AppModel {
             mainWindowWanted = false
             openMainWindow()
         }
+    }
+}
+
+/// The main window's content, only while the window is open: closed, SwiftUI keeps the window around,
+/// so it draws nothing rather than holding every page it showed.
+public struct MainWindowContent: View {
+    @Environment(AppModel.self) private var model
+
+    public init() {}
+
+    public var body: some View {
+        // Opening it, or it coming forward, says it's shown (not this placeholder appearing: it appears
+        // as the window closes, too).
+        if model.mainWindowShown { RootView() } else { Color.clear }
     }
 }
 

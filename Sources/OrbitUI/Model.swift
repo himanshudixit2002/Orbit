@@ -134,6 +134,8 @@ public final class AppModel {
     var paused: PausedState?
     /// The restarts Orbit has timed, oldest first.
     var startups: [StartupRecord] = []
+    /// Whether the main window is open: closed, it draws nothing (see `MainWindowContent`).
+    public internal(set) var mainWindowShown = false
     /// The apps that were heavy at the heavy-app check's last look.
     @ObservationIgnored var heavyBefore: Set<String> = []
     private var activationObserver: NSObjectProtocol?

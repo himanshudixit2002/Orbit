@@ -11,7 +11,7 @@ struct OrbitApp: App {
 
     var body: some Scene {
         Window("Orbit", id: "main") {
-            RootView()
+            MainWindowContent()
                 .environment(model)
                 .frame(minWidth: 940, minHeight: 640)
         }
@@ -76,11 +76,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OrbitShortcuts.updateAppShortcutParameters()
         Self.model.modesEdited = { OrbitShortcuts.updateAppShortcutParameters() }
         // Orbit lives in the menu bar: its Dock icon shows only while its main window is open.
-        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { _ in
-            // Looked at once the window has gone. A minimised one still needs the Dock to come back from.
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { note in
+            let closing = note.object as? NSWindow
+            // A minimised one still needs the Dock to come back from. The one closing may still be on
+            // screen for a moment (Close All asks before it's gone): it doesn't count.
             Task { @MainActor in
-                let mainWindowOpen = NSApp.windows.contains { $0.title == "Orbit" && !($0 is NSPanel) && ($0.isVisible || $0.isMiniaturized) }
-                if !mainWindowOpen { NSApp.setActivationPolicy(.accessory) }
+                let mainWindowOpen = NSApp.windows.contains { $0 !== closing && $0.title == "Orbit" && !($0 is NSPanel) && ($0.isVisible || $0.isMiniaturized) }
+                if !mainWindowOpen {
+                    NSApp.setActivationPolicy(.accessory)
+                    Self.model.mainWindowClosed()
+                }
+            }
+        }
+        // However the main window comes back (the Dock, the Window menu), it draws its pages again.
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didBecomeMainNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
+                let window = note.object as? NSWindow
+                Task { @MainActor in
+                    if window?.title == "Orbit", !(window is NSPanel) { Self.model.mainWindowAppeared() }
+                }
             }
         }
         // Started at login, or in the background (`--background`, after an update): just the menu bar icon.

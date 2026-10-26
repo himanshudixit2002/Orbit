@@ -32,19 +32,25 @@ public final class ChangeLane: Sendable {
     /// Runs `work` after every change asked for before it, and hands back its result.
     public func run<T: Sendable>(_ title: String, _ work: @escaping @Sendable () async -> T) async -> T {
         if Self.inside { return await work() }
-        state.withLock { $0.waiting += 1 }
         return await withCheckedContinuation { done in
-            jobs.yield { [state] in
-                state.withLock { $0.running = title; $0.waiting -= 1 }
-                let result = await work()
-                state.withLock { $0.running = nil }
-                done.resume(returning: result)
+            // Counted and queued in one step: a change asked for a moment later can't slip in ahead.
+            state.withLock { s in
+                s.waiting += 1
+                jobs.yield { [state] in
+                    state.withLock { $0.running = title; $0.waiting -= 1 }
+                    let result = await work()
+                    state.withLock { $0.running = nil }
+                    done.resume(returning: result)
+                }
             }
         }
     }
 
     /// Nothing running and nothing waiting.
     public var isIdle: Bool { state.withLock { $0.running == nil && $0.waiting == 0 } }
+
+    /// Changes asked for and not started yet.
+    var waiting: Int { state.withLock { $0.waiting } }
 
     /// What's being changed right now, for "Finishing …" messages.
     public var currentTitle: String? { state.current.running }

@@ -20,13 +20,13 @@ import Testing
         try make(ctx.paths.at("Desktop/notes.txt"), bytes: 300_000)
         try make(ctx.paths.at("Models/model.bin"), bytes: 150_000)
         let probe = StorageProbe(ctx, systemRoot: system)
-        let (areas, _) = await probe.measure(fullAccess: false)
+        let areas = await probe.measure(fullAccess: false).areas
         func size(_ kind: StorageArea.Kind) -> Int64 { areas.first { $0.kind == kind }?.size ?? -1 }
         #expect(size(.apps) >= 400_000 && size(.projects) >= 200_000 && size(.developer) >= 100_000 && size(.home) >= 150_000)
         // Apps' data without other apps' containers, and your own folders not looked into at all.
         #expect(size(.appData) >= 50_000 && size(.appData) < 300_000)
         #expect(areas.first { $0.kind == .files }?.hidden == true)
-        let (open, _) = await probe.measure(fullAccess: true)
+        let open = await probe.measure(fullAccess: true).areas
         #expect(open.first { $0.kind == .files }?.size ?? 0 >= 300_000)
         #expect(open.first { $0.kind == .appData }?.size ?? 0 >= 350_000)
     }
@@ -46,9 +46,15 @@ import Testing
         let system = ctx.paths.home.appending(path: "system-root")
         try make(system.appending(path: "Applications/Mine.app/Contents/MacOS/Mine"), bytes: 500_000)
         try make(ctx.paths.at("Applications/Tool.app/Contents/MacOS/Tool"), bytes: 100_000)
-        let apps = await StorageProbe(ctx, systemRoot: system).apps()
+        let probe = StorageProbe(ctx, systemRoot: system)
+        let apps = await probe.apps()
         #expect(apps.map(\.name) == ["Mine", "Tool"])
         #expect(apps[0].size >= 500_000 && apps[0].removable && !apps[0].running)
+        // A scan measures each app on its way, and the list takes those sizes.
+        let scan = await probe.measure(fullAccess: false)
+        let mine = system.appending(path: "Applications/Mine.app").path(percentEncoded: false)
+        #expect(scan.appSizes[mine] == apps[0].size)
+        #expect(await probe.apps(sizes: [mine: 42]).first { $0.name == "Mine" }?.size == 42)
     }
 
     @Test func anAppOrAFileGoesToTheTrashWithUndo() async throws {

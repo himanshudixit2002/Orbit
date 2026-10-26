@@ -7,20 +7,26 @@ import Testing
     @Test func changesRunOneAtATimeInOrder() async {
         let lane = ChangeLane()
         let log = Locked<[String]>([])
-        await withTaskGroup(of: Void.self) { group in
-            for n in 0..<8 {
-                group.addTask {
-                    // Asked for in order, apart enough that a busy Mac still wakes them in that order,
-                    // each holding the lane for a while.
-                    try? await Task.sleep(for: .milliseconds(n * 25))
-                    await lane.run("change \(n)") {
-                        log.withLock { $0.append("start \(n)") }
-                        try? await Task.sleep(for: .milliseconds(15))
-                        log.withLock { $0.append("end \(n)") }
-                    }
+        // The lane is held while the changes queue up, each asked for only once the one before is
+        // queued: their order doesn't depend on how quickly a busy Mac wakes anything up.
+        let gate = AsyncStream<Void>.makeStream()
+        let holder = Task { await lane.run("hold") { for await _ in gate.stream { break } } }
+        while lane.currentTitle != "hold" { await Task.yield() }
+        var changes: [Task<Void, Never>] = []
+        for n in 0..<8 {
+            changes.append(Task {
+                await lane.run("change \(n)") {
+                    log.withLock { $0.append("start \(n)") }
+                    try? await Task.sleep(for: .milliseconds(5))
+                    log.withLock { $0.append("end \(n)") }
                 }
-            }
+            })
+            while lane.waiting < n + 1 { await Task.yield() }
         }
+        gate.continuation.yield()
+        gate.continuation.finish()
+        await holder.value
+        for change in changes { await change.value }
         let entries = log.current
         // Never two at once: every start is followed by its own end.
         for i in stride(from: 0, to: entries.count, by: 2) {

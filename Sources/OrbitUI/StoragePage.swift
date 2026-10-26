@@ -26,12 +26,11 @@ final class StorageModel {
         measuring = true
         let probe = StorageProbe(ctx)
         fullAccess = ctx.readings.fullDiskAccess()
-        async let measured = probe.measure(fullAccess: fullAccess)
-        async let apps = probe.apps()
-        let (found, listed) = await (measured, apps)
+        let found = await probe.measure(fullAccess: fullAccess)
+        // The apps' sizes come from the same walk.
+        apps = await probe.apps(sizes: found.appSizes)
         areas = found.areas
         largeFiles = found.largeFiles
-        self.apps = listed
         removed = []
         measuredAt = Date()
         measuring = false

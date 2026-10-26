@@ -164,9 +164,11 @@ struct LiveProbeCheck {
         let access = FullDiskAccess.granted()
         let start = ContinuousClock.now
         let probe = StorageProbe(ctx)
-        let (areas, files) = await probe.measure(fullAccess: access)
-        let apps = await probe.apps()
-        print("PROBE storage took \(ContinuousClock.now - start); Full Disk Access \(access)")
+        let scan = await probe.measure(fullAccess: access)
+        let walked = ContinuousClock.now - start
+        let (areas, files) = (scan.areas, scan.largeFiles)
+        let apps = await probe.apps(sizes: scan.appSizes)
+        print("PROBE storage took \(ContinuousClock.now - start) (walk \(walked), apps \(ContinuousClock.now - start - walked)); Full Disk Access \(access)")
         for area in areas { print("PROBE storage:   \(area.kind.title) \(area.hidden ? "hidden" : ByteCountFormatter.string(fromByteCount: area.size, countStyle: .file))") }
         for app in apps.prefix(8) { print("PROBE storage: app \(app.name) \(ByteCountFormatter.string(fromByteCount: app.size, countStyle: .file)) \(app.lastUsedText()) removable \(app.removable)") }
         for file in files.prefix(8) { print("PROBE storage: file \(file.path) \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))") }

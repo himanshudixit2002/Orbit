@@ -364,15 +364,7 @@ public struct CleanupScanner: Sendable {
         return item
     }
 
-    static func allocatedSize(_ url: URL) -> Int64 {
-        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-                                                              options: [], errorHandler: { _, _ in true }) else { return 0 }
-        var total: Int64 = 0
-        for case let file as URL in enumerator {
-            total += Int64((try? file.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
-        }
-        return total
-    }
+    static func allocatedSize(_ url: URL) -> Int64 { StorageProbe.walk(url, collectingFrom: nil).size }
 
     /// Moves items' files to the Trash in one change, recording how to put them back. An app's cache
     /// waits while that app is open.
