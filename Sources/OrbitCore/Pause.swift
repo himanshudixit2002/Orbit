@@ -7,12 +7,13 @@ public struct PausedState: Codable, Sendable, Equatable {
     public var features: [FeatureID]
     /// The Instant Mac groups that were on.
     public var instant: [SpeedTweak.Group]
-    /// The mode that was on, when it's one to start again: switched on by hand, with no timer.
+    /// The mode that was on. It stays on through the pause with what it changed, but doesn't keep the
+    /// Mac awake until Resume.
     public var modeID: String?
     public var since: Date
 
     public init(features: [FeatureID] = [], instant: [SpeedTweak.Group] = [], modeID: String? = nil, since: Date = Date()) {
-        self.features = PausePlan.offOrder.filter(features.contains)
+        self.features = PausePlan.order.filter(features.contains)
         self.instant = SpeedTweak.Group.allCases.filter(instant.contains)
         self.modeID = modeID
         // Whole seconds, as it's saved: read back, it's the same pause.
@@ -32,11 +33,11 @@ public struct PausedState: Codable, Sendable, Equatable {
 }
 
 public enum PausePlan {
-    /// The order things are switched off in: the new menu bar first (it hands tiling back the room it
-    /// took, which rewrites tiling's config, so a hand-edited one is asked about before anything else).
-    public static let offOrder: [FeatureID] = [.menuBar, .tiling, .glow, .capsLock, .downloads]
-    /// And back on: tiling before the bar, so the bar can claim its room from it.
-    public static let onOrder: [FeatureID] = [.tiling, .glow, .menuBar, .capsLock, .downloads]
+    /// The order things are switched off in, and back on: the new menu bar first both ways. Off, it
+    /// hands tiling back the room it took, which rewrites tiling's config, so a hand-edited one is asked
+    /// about before anything else. On, its room is in tiling's config before tiling starts: tiling reads
+    /// its config as it starts, which would undo a room claimed a moment later.
+    public static let order: [FeatureID] = [.menuBar, .tiling, .glow, .capsLock, .downloads]
 
     /// What a pause stops, in a sentence: "window tiling, the window glow and Work mode".
     public static func summary(_ state: PausedState, modeName: String?) -> String {

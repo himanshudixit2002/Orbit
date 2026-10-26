@@ -3,34 +3,29 @@ import OrbitPlatform
 import SwiftUI
 
 extension AppModel {
-    /// Switches off everything Orbit runs, after stopping the mode that's on (which puts back what it
-    /// changed), and remembers what was on. Orbit itself keeps running in the menu bar to resume.
+    /// Switches off everything Orbit runs and remembers what was on. The mode that's on stays on with
+    /// what it changed, so Resume never opens, quits or hides apps; it only stops keeping the Mac awake.
+    /// Orbit itself keeps running in the menu bar to resume.
     @discardableResult
     func pauseOrbit(quiet: Bool = false) async -> OrbitReply {
         guard paused == nil else { return OrbitReply(ok: true, message: "Orbit is already paused.") }
-        // Busy from the first click: stopping the mode takes a moment, and a second click mustn't start another pause.
+        guard modes.working == nil else { return OrbitReply(ok: false, message: "Orbit is still switching modes.") }
+        // Busy from the first click: reading what's on takes a moment, and a second click mustn't start another pause.
         guard !isBusy("pause"), busy.insert("pause-prep").inserted else { return OrbitReply(ok: false, message: "Orbit is still working on that.") }
         defer { busy.remove("pause-prep") }
-        let mode = modes.active
-        if mode != nil {
-            await modes.stop()
-            // What the mode switched is back as it was: look again before choosing what to pause.
-            await refresh()
-        }
-        // A mode with a timer or a schedule isn't started again: its time may be over by then.
-        let restart = mode.flatMap { $0.endsAt == nil && !$0.bySchedule ? $0.modeID : nil }
         let instant = await Task.detached(priority: .userInitiated) { [actions] in actions.instantGroupsOn() }.value
         let on = FeatureID.switchable.filter { state($0).isOn || state($0).needsAttention }
-        let pausing = PausedState(features: on, instant: Array(instant), modeID: restart)
+        let pausing = PausedState(features: on, instant: Array(instant), modeID: modes.active?.modeID)
         let result = await performNow("pause", "Paused Orbit", quiet: quiet) { [actions] policy in
             try await actions.pause(pausing, policy: policy)
         }
         paused = ctx.store.paused
+        if paused != nil { modes.hold() }
         speedFindings.removeAll { $0.id == "speed-instant" }
         return OrbitReply(ok: result.ok, message: result.message)
     }
 
-    /// Switches back on what was on when Orbit was paused, then starts the mode that was on.
+    /// Switches back on what was on when Orbit was paused; the mode that's on keeps the Mac awake again.
     @discardableResult
     func resumeOrbit(quiet: Bool = false) async -> OrbitReply {
         guard let state = ctx.store.paused else {
@@ -41,9 +36,7 @@ extension AppModel {
             try await actions.resume(state, policy: policy)
         }
         paused = ctx.store.paused
-        if paused == nil, let id = state.modeID, modes.active == nil, let mode = settings.modes.first(where: { $0.id == id }) {
-            await modes.toggle(mode)
-        }
+        if paused == nil { modes.resume() }
         return OrbitReply(ok: result.ok, message: result.message)
     }
 

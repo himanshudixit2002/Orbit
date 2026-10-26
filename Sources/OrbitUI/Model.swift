@@ -211,7 +211,8 @@ public final class AppModel {
 
     func start() async {
         let justStarted = Self.macJustStarted
-        modes.resume()
+        // Paused, the mode that's on doesn't keep the Mac awake until Orbit is resumed.
+        if paused == nil { modes.resume() }
         armModeAlarm()
         // Low on disk: a notice at most once a day.
         Task { [weak self] in
@@ -492,15 +493,22 @@ public final class AppModel {
             if !quiet { show(Toast(ok: outcome.ok, message: outcome.message, journalID: id)) }
             if !outcome.ok { notifyFailure(title, outcome.message) { [weak self] in self?.perform(key, title, work) } }
         } catch let edited as EditedByHand {
-            ctx.store.endChange(change)
+            // Most changes stop before touching anything. Pause goes on past a hand-edited file to switch
+            // off the rest, and what it did stays in the history so Undo can still put it back.
+            let done = ctx.store.inflight.first { $0.id == change }?.actions ?? []
+            if done.isEmpty {
+                ctx.store.endChange(change)
+            } else {
+                record(title, true, "Part-way: \(edited.file.title) were edited by hand.", undo: done, change: change)
+                requestRefresh(after: .milliseconds(300))
+            }
             // Asked from outside the window: the question waits in Orbit, and a notice says so.
             if quiet {
                 notifier?.send(.edited, key: "edited \(edited.file)", title: "Orbit didn't change \(edited.file.title)",
                                body: "They were edited by hand. Open Orbit to compare and choose.") { [weak self] in self?.openMainWindow() }
             }
-            // Nothing has changed yet, so there's nothing to re-check. Returning now also frees `key`
-            // before the user can answer. Their OK covers only the file they were shown: any other
-            // hand-edited file in the same change still gets its own question.
+            // Returning now frees `key` before the user can answer. Their OK covers only the file they
+            // were shown: any other hand-edited file in the same change still gets its own question.
             let next = policy.approving(edited.file)
             conflict = Conflict(file: edited.file, proposed: edited.proposed) { [weak self] in
                 guard let self, busy.insert(key).inserted else { return }

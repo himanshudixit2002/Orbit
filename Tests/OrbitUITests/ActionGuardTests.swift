@@ -138,6 +138,40 @@ func practiceModel() throws -> AppModel {
         #expect(next.modes.active == nil)
         #expect(AppModel(ctx: SystemContext.make(mode: .practice, paths: model.ctx.paths)).modes.active == nil)
     }
+
+    @Test func pausingHoldsTheModeAndResumeOpensNoApps() async throws {
+        let model = try practiceModel()
+        let mode = ModeDefinition(id: "custom-test", name: "Test", symbol: "sparkles", blurb: "", openApps: ["Calculator"], quitApps: [],
+                                  hideOthers: false, keepAwake: .system, tilingOn: false)
+        model.ctx.store.updateSettings { $0.modes.append(mode) }
+        await model.modes.toggle(mode)
+        model.ctx.practiceLog.clear()
+        await model.pauseOrbit(quiet: true)
+        #expect(model.paused?.modeID == "custom-test")
+        // Held, not stopped: the mode stays on and nothing it did is put back.
+        #expect(model.modes.active?.modeID == "custom-test")
+        #expect(!model.ctx.practiceLog.all.contains { $0.summary == "Would keep the Mac awake" })
+        await model.resumeOrbit(quiet: true)
+        #expect(model.paused == nil)
+        #expect(model.modes.active?.modeID == "custom-test")
+        #expect(model.ctx.practiceLog.all.contains { $0.summary == "Would keep the Mac awake" })
+        // Apps the user closed since the mode started stay closed.
+        #expect(!model.ctx.practiceLog.all.contains { $0.summary == "Open Calculator" })
+    }
+
+    @Test func aChangeThatStopsAtAnEditedFileKeepsWhatItDidInTheHistory() async throws {
+        let model = try practiceModel()
+        let store = model.ctx.store
+        let result = await model.performNow("pause", "Paused Orbit", quiet: true) { _ in
+            // Like Pause: one switch is already off when the next one meets a hand-edited file.
+            if let change = UndoRecorder.change { store.noteSteps([.gitConfig(key: "delta.syntax-theme", value: nil)], change: change) }
+            throw EditedByHand(file: .yabairc, proposed: "# Orbit's version\n")
+        }
+        #expect(!result.ok)
+        #expect(store.journal.contains { $0.title == "Paused Orbit" && $0.actions.count == 1 })
+        #expect(store.inflight.isEmpty)
+        #expect(model.conflict != nil)
+    }
 }
 
 @MainActor

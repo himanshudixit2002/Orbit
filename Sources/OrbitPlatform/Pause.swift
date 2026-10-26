@@ -43,7 +43,7 @@ extension Actions {
             // Paused as soon as it starts: if Orbit stops part-way, it still knows what to bring back.
             if !on { undo += setPaused(state) }
             var problems: [String] = []
-            for id in (on ? PausePlan.onOrder : PausePlan.offOrder) where state.features.contains(id) {
+            for id in PausePlan.order where state.features.contains(id) {
                 do {
                     let result = try await setFeature(id, on: on, policy: policy)
                     undo += result.undo

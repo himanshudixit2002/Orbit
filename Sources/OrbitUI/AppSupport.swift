@@ -92,8 +92,12 @@ public enum SnapshotHarness {
         sample.download = 420_000
         sample.upload = 38_000
         model.monitor.fill(with: sample)
-        if scenario == "all-on" {
+        if scenario == "all-on" || scenario == "paused" {
             model.modes.active = ModeRecord(modeID: "work")
+        }
+        if scenario == "paused" {
+            model.paused = PausedState(features: PausePlan.order, instant: SpeedTweak.Group.allCases, modeID: "work",
+                                       since: Date().addingTimeInterval(-25 * 60))
         }
         for (name, appearance) in [("light", NSAppearance(named: .aqua)), ("dark", NSAppearance(named: .darkAqua))] {
             for page in Page.allCases {
@@ -191,6 +195,8 @@ public enum SnapshotHarness {
             s.keyboard.driver = .waitingForApproval
             s.downloads.log.lastError = .init(date: now, message: "cannot read Downloads")
             s.apps[.syntaxHighlight]?.quickLook = .notRegistered
+        case "paused":
+            s.terminalThemed = true
         default:
             s.glow.run = .loaded(running: true, pid: 3, lastExit: nil)
             s.terminalThemed = true

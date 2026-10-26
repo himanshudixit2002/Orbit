@@ -67,10 +67,17 @@ final class ModesModel {
         active = ctx.store.activeMode
     }
 
-    /// Keeps the Mac awake again for a mode that was on when Orbit last quit (the hold ended with Orbit).
+    /// Keeps the Mac awake again for a mode that was on when Orbit last quit (the hold ended with Orbit),
+    /// or once Orbit is resumed.
     func resume() {
         guard let active, let mode = ctx.store.settings.modes.first(where: { $0.id == active.modeID }) else { return }
         engine.setKeepAwake(mode.keepAwake, reason: "Orbit \(mode.name) mode")
+    }
+
+    /// While Orbit is paused, the mode that's on stays on with what it changed, but stops keeping the
+    /// Mac awake. `resume()` takes that up again.
+    func hold() {
+        engine.setKeepAwake(.off, reason: "")
     }
 
     func name(_ record: ModeRecord) -> String {

@@ -172,6 +172,11 @@ public struct Actions: Sendable {
         return helper == .sorter ? run.isLoaded : run.isRunning
     }
 
+    /// Switched on: launchd has the helper, even while it's starting or starting again.
+    func isSwitchedOn(_ helper: Helper) async -> Bool {
+        LaunchctlParser.run(await ctx.run(Commands.launchctlPrint(helper.label, uid: uid))).isLoaded
+    }
+
     /// Starts a helper and lets it start again at login.
     @discardableResult
     func start(_ helper: Helper) async -> CommandResult {
@@ -259,7 +264,8 @@ public struct Actions: Sendable {
                 return "Window tiling is off."
             }
         }
-        let barOn = await isRunning(.sketchybar)
+        // A bar that's switched on keeps its room even while it's still starting: tiling reads this as it starts.
+        let barOn = await isSwitchedOn(.sketchybar)
         let yabairc = YabaiConfig.render(settings, barReserved: barOn ? settings.bar.reservedSpace : nil)
         try checkEdits([.yabairc: yabairc], policy: policy)
         let backups = backupFolder("tiling")

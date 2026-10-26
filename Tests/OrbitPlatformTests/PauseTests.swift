@@ -31,6 +31,31 @@ import Testing
         #expect(ctx.store.paused == nil)
     }
 
+    @Test func resumingStartsTheMenuBarBeforeTiling() async throws {
+        // Tiling reads its config as it starts: the bar's room has to be in it by then, or tiling's own
+        // start undoes the room the bar claims a moment later and windows slide under the bar.
+        let system = FakeSystem()
+        runningEverything(system)
+        let ctx = try sandboxContext(system, prefs: FakePreferences())
+        let actions = Actions(ctx)
+        let state = PausedState(features: [.tiling, .menuBar])
+        _ = try await actions.pause(state)
+        _ = try await actions.resume(state)
+        let commands = system.commands
+        let bar = try #require(commands.firstIndex { FakeSystem.name($0) == "brew" && $0.arguments == ["services", "start", Helper.sketchybar.brewFormula!] })
+        let tiling = try #require(commands.firstIndex { FakeSystem.name($0) == "yabai" && $0.arguments.first == "--start-service" })
+        #expect(bar < tiling)
+        #expect(try String(contentsOf: ctx.paths.yabairc, encoding: .utf8).contains(ctx.store.settings.bar.externalBar(on: true)))
+    }
+
+    @Test func tilingKeepsRoomForABarThatIsStillStarting() async throws {
+        let system = FakeSystem()
+        system.load(Helper.sketchybar.label, running: false)
+        let ctx = try sandboxContext(system, prefs: FakePreferences())
+        _ = try await Actions(ctx).setTiling(true)
+        #expect(try String(contentsOf: ctx.paths.yabairc, encoding: .utf8).contains(ctx.store.settings.bar.externalBar(on: true)))
+    }
+
     @Test func undoingAPauseBringsItAllBack() async throws {
         let system = FakeSystem()
         runningEverything(system)

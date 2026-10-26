@@ -7,7 +7,7 @@ import Testing
         let state = PausedState(features: [.downloads, .tiling, .menuBar], instant: [.finder, .windows], modeID: "focus")
         #expect(state.features == [.menuBar, .tiling, .downloads])
         #expect(state.instant == [.windows, .finder])
-        #expect(PausePlan.onOrder.filter(state.features.contains) == [.tiling, .menuBar, .downloads])
+        #expect(PausePlan.order.filter(state.features.contains) == [.menuBar, .tiling, .downloads])
         #expect(PausePlan.summary(state, modeName: "Focus") == "the new menu bar, window tiling, Downloads sorting, Instant Mac and Focus mode")
         #expect(PausePlan.summary(PausedState(features: [.glow]), modeName: nil) == "the window glow")
         #expect(PausePlan.summary(PausedState(), modeName: nil) == "nothing that was running")

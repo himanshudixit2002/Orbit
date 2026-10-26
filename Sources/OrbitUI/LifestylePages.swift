@@ -318,7 +318,7 @@ struct ModesPage: View {
                     HStack(spacing: 14) {
                         IconTile(symbol: mode.symbol, hue: .purple, size: 40)
                         VStack(alignment: .leading) {
-                            Text("\(mode.name) mode is on").font(.headline)
+                            Text(model.paused == nil ? "\(mode.name) mode is on" : "\(mode.name) mode is paused with Orbit").font(.headline)
                             Text("Since \(active.started.formatted(date: .omitted, time: .shortened)). Switching it off reopens anything it closed.")
                                 .foregroundStyle(.secondary)
                         }
