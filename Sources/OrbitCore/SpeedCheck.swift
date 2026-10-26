@@ -35,7 +35,8 @@ public struct AppUsage: Sendable, Equatable, Identifiable {
     public var isFrontmost = false
     /// Minutes since it was last in front (nil: not known).
     public var idleMinutes: Double?
-    /// Playing sound or video: in use even when it isn't in front.
+    /// Playing sound or video, or keeping the Mac awake for work it's doing: in use even when it
+    /// isn't in front.
     public var inUse = false
 
     public init(name: String, path: String, memory: UInt64, cpuPercent: Double? = nil, processes: Int = 1,
@@ -86,8 +87,9 @@ public enum AppGrouping {
     }
 
     /// Processes added up into apps, the biggest first. With the previous reading's processor times
-    /// (by pid) and the seconds since, each app also gets its processor use over that time.
-    public static func apps(_ stats: [ProcessStat], before: [Int32: Double]?, interval: Double, playing: Set<Int32> = []) -> [AppUsage] {
+    /// (by pid) and the seconds since, each app also gets its processor use over that time; `busy` are
+    /// the processes in use without being in front (see `AppUsage.inUse`).
+    public static func apps(_ stats: [ProcessStat], before: [Int32: Double]?, interval: Double, busy: Set<Int32> = []) -> [AppUsage] {
         let byPID = Dictionary(stats.map { ($0.pid, $0) }, uniquingKeysWith: { first, _ in first })
         var groups: [String: AppUsage] = [:]
         for stat in stats {
@@ -96,7 +98,7 @@ public enum AppGrouping {
                                                    path: bundle, memory: 0, cpuPercent: before == nil ? nil : 0, processes: 0)
             usage.memory += stat.memory
             usage.processes += 1
-            if playing.contains(stat.pid) { usage.inUse = true }
+            if busy.contains(stat.pid) { usage.inUse = true }
             if let before, interval > 0 {
                 // A process that wasn't there before counts from now, so a restart can't look like a spike.
                 let used = max(0, stat.cpuTime - (before[stat.pid] ?? stat.cpuTime))
@@ -193,7 +195,7 @@ public enum SpeedCheck {
     public static let siriSeconds = 30.0
     public static let tightSwap: UInt64 = 2_048 * 1_048_576
 
-    /// Apps Orbit may offer to quit: not part of macOS, not Orbit or Finder, not in front or playing.
+    /// Apps Orbit may offer to quit: not part of macOS, not Orbit or Finder, not in front or in use.
     public static func quittable(_ app: AppUsage) -> Bool {
         !app.isApple && !app.isFrontmost && !app.inUse && !["Orbit", "Orbit Dev", "Finder"].contains(app.name)
     }
@@ -236,16 +238,7 @@ public enum SpeedCheck {
                 fix: .open(.cleanup)))
         }
 
-        for app in heavy(facts.apps, memoryTight: tight) {
-            let busy = (app.cpuPercent ?? 0) >= heavyCPU
-            let idle = Int(app.idleMinutes ?? 0)
-            found.append(DoctorFinding(
-                id: "speed-heavy-\(app.path)", severity: .tidy, symbol: busy ? "cpu" : "memorychip",
-                title: busy ? "\(app.name) keeps the processor busy while you're not using it"
-                            : "\(app.name) holds \(bytes(Int64(app.memory))) while you're not using it",
-                detail: "It hasn't been in front for \(idle >= 120 ? "\(idle / 60) hours" : "\(idle) minutes")\(busy ? ", yet it uses \(Int(app.cpuPercent ?? 0))% of a core" : ""). Quitting it frees that; it can save first.",
-                fix: .quitApp(path: app.path, name: app.name)))
-        }
+        found += heavy(facts.apps, memoryTight: tight).map(heavyFinding)
 
         for leftover in facts.leftovers {
             found.append(DoctorFinding(
@@ -272,6 +265,27 @@ public enum SpeedCheck {
         }
 
         return found.filter { !ignored.contains($0.id) }.sorted { ($0.severity, $0.title) < ($1.severity, $1.title) }
+    }
+
+    /// An app you aren't using that keeps the Mac busy, with Quit (the Speed page and the notice say the same).
+    public static func heavyFinding(_ app: AppUsage) -> DoctorFinding {
+        let busy = (app.cpuPercent ?? 0) >= heavyCPU
+        let idle = Int(app.idleMinutes ?? 0)
+        return DoctorFinding(
+            id: "speed-heavy-\(app.path)", severity: .tidy, symbol: busy ? "cpu" : "memorychip",
+            title: busy ? "\(app.name) keeps the processor busy while you're not using it"
+                        : "\(app.name) holds \(bytes(Int64(app.memory))) while you're not using it",
+            detail: "It hasn't been in front for \(idle >= 120 ? "\(idle / 60) hours" : "\(idle) minutes")\(busy ? ", yet it uses \(Int(app.cpuPercent ?? 0))% of a core" : ""). Quitting it frees that; it can save first.",
+            fix: .quitApp(path: app.path, name: app.name))
+    }
+
+    /// The heavy apps worth a notice: heavy now and at the look before (`heavyBefore`, by path), so a
+    /// moment's burst doesn't count, and not ones you've told the Speed check to ignore.
+    public static func toNotify(_ apps: [AppUsage], memoryTight: Bool, heavyBefore: Set<String>,
+                                ignored: Set<String> = []) -> (notify: [AppUsage], heavyNow: Set<String>) {
+        let now = heavy(apps, memoryTight: memoryTight)
+        let notify = now.filter { heavyBefore.contains($0.path) && !ignored.contains("speed-heavy-\($0.path)") }
+        return (notify, Set(now.map(\.path)))
     }
 
     /// "1 min 40 s", "45 s", "2 h 5 min".

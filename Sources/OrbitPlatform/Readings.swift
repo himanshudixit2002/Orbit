@@ -68,8 +68,9 @@ public struct SystemReadings: Sendable {
     public var processes: @Sendable () -> [RunningProcess] = { RunningProcess.all() }
     /// Each process's program, memory and processor time (the Speed check and heavy-app notices).
     public var processStats: @Sendable () -> [ProcessStat] = { ProcessStat.all() }
-    /// Processes playing sound or video now (they hold macOS's "keep awake for playback" assertions).
-    public var mediaPIDs: @Sendable () -> Set<Int32> = { MediaPlayback.pids() }
+    /// Processes in use without being in front: playing sound or video, in a call, or keeping the Mac
+    /// awake for work they're doing (a download, an agent's task).
+    public var busyPIDs: @Sendable () -> Set<Int32> = { PowerAssertions.busyPIDs() }
     /// A preference as macOS has it now (what `defaults read` shows).
     public var preference: @Sendable (_ domain: String, _ key: String) -> PrefValue? = { Preferences.read($0, $1) }
     /// Bundle ids of the apps running now.
@@ -85,9 +86,13 @@ public struct SystemReadings: Sendable {
     public init() {}
 }
 
-/// Who is playing sound or video, from macOS's power assertions (what `pmset -g assertions` lists).
-enum MediaPlayback {
-    static func pids() -> Set<Int32> {
+/// Who is busy on purpose, from macOS's power assertions (what `pmset -g assertions` lists): playing
+/// sound or video, or asking the Mac not to sleep while it works.
+enum PowerAssertions {
+    static let keepAwake: Set<String> = ["PreventUserIdleDisplaySleep", "PreventUserIdleSystemSleep", "PreventSystemSleep",
+                                         "NoIdleSleepAssertion", "NoDisplaySleepAssertion"]
+
+    static func busyPIDs() -> Set<Int32> {
         var byProcess: Unmanaged<CFDictionary>?
         guard IOPMCopyAssertionsByProcess(&byProcess) == kIOReturnSuccess,
               let all = byProcess?.takeRetainedValue() as? [NSNumber: [[String: Any]]] else { return [] }
@@ -96,8 +101,7 @@ enum MediaPlayback {
             for assertion in assertions {
                 let name = (assertion["AssertName"] as? String ?? "").lowercased()
                 let type = assertion["AssertType"] as? String ?? ""
-                guard name.contains("playback") || name.contains("audio") || name.contains("video")
-                        || type == "PreventUserIdleDisplaySleep" else { continue }
+                guard name.contains("playback") || name.contains("audio") || name.contains("video") || keepAwake.contains(type) else { continue }
                 pids.insert(pid.int32Value)
                 // Sound is often held by coreaudiod on behalf of the app that plays it.
                 if let onBehalf = assertion["AssertionOnBehalfOfPID"] as? NSNumber { pids.insert(onBehalf.int32Value) }

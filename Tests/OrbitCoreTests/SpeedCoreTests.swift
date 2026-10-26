@@ -74,7 +74,7 @@ import Testing
         let before: [Int32: Double] = [10: 100, 11: 50]
         let stats = [stat(10, "\(claude)/Contents/MacOS/Claude", cpu: 101), stat(11, "\(claude)/Contents/Frameworks/H.app/Contents/MacOS/H", parent: 10, cpu: 50.5),
                      stat(12, "\(claude)/Contents/Frameworks/New.app/Contents/MacOS/New", parent: 10, cpu: 7)]
-        let app = AppGrouping.apps(stats, before: before, interval: 5, playing: [11]).first!
+        let app = AppGrouping.apps(stats, before: before, interval: 5, busy: [11]).first!
         #expect(abs((app.cpuPercent ?? 0) - 30) < 0.001)   // (1 + 0.5) s over 5 s; the new helper counts from now
         #expect(app.inUse)
     }
@@ -111,6 +111,26 @@ import Testing
         #expect(tight.first?.id == "speed-memory")
         #expect(Set(tight.map(\.id)).isSuperset(of: ["speed-heavy-/Applications/Busy.app", "speed-heavy-/Applications/Big.app"]))
         #expect(tight.first { $0.id == "speed-heavy-/Applications/Big.app" }?.fix == .quitApp(path: "/Applications/Big.app", name: "Big"))
+    }
+
+    @Test func aNoticeNeedsTwoHeavyLooksInARow() {
+        let busy = AppUsage(name: "Busy", path: "/Applications/Busy.app", memory: 300_000_000, cpuPercent: 25, idleMinutes: 45)
+        let first = SpeedCheck.toNotify([busy], memoryTight: false, heavyBefore: [])
+        #expect(first.notify.isEmpty && first.heavyNow == ["/Applications/Busy.app"])
+        #expect(SpeedCheck.toNotify([busy], memoryTight: false, heavyBefore: first.heavyNow).notify == [busy])
+        // A burst that settles down, an app you've told it to ignore, one in front, one playing or working: no notice.
+        var calm = busy
+        calm.cpuPercent = 2
+        #expect(SpeedCheck.toNotify([calm], memoryTight: false, heavyBefore: first.heavyNow) == ([], []))
+        #expect(SpeedCheck.toNotify([busy], memoryTight: false, heavyBefore: first.heavyNow,
+                                    ignored: ["speed-heavy-/Applications/Busy.app"]).notify.isEmpty)
+        var front = busy
+        front.isFrontmost = true
+        var working = busy
+        working.inUse = true
+        #expect(SpeedCheck.toNotify([front, working], memoryTight: true, heavyBefore: first.heavyNow).notify.isEmpty)
+        #expect(SpeedCheck.heavyFinding(busy).title == "Busy keeps the processor busy while you're not using it")
+        #expect(SpeedCheck.heavyFinding(busy).detail.hasPrefix("It hasn't been in front for 45 minutes, yet it uses 25% of a core."))
     }
 
     @Test func siriInstantDiskAndIgnoring() {

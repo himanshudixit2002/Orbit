@@ -86,7 +86,7 @@ public final class AppUsageTracker: Sendable {
     /// The apps and what each uses now; processor use needs an earlier look, so the first has none.
     public func sample(frontmost: String?, at date: Date = Date()) -> [AppUsage] {
         let stats = readings.processStats()
-        let playing = readings.mediaPIDs()
+        let busy = readings.busyPIDs()
         let now = ContinuousClock.now
         let (before, interval, lastActive, started) = state.withLock { s -> ([Int32: Double]?, Double, [String: Date], Date) in
             let elapsed = s.lastAt.map { now - $0 }.map { Double($0.components.seconds) + Double($0.components.attoseconds) / 1e18 }
@@ -97,7 +97,7 @@ public final class AppUsageTracker: Sendable {
             return (elapsed.map { _ in s.lastTimes }, elapsed ?? 0, s.lastActive, s.started)
         }
         let front = frontmost.map(Self.trimmed)
-        return AppGrouping.apps(stats, before: before, interval: interval, playing: playing).map { app in
+        return AppGrouping.apps(stats, before: before, interval: interval, busy: busy).map { app in
             var app = app
             app.isFrontmost = app.path == front
             let since = app.isFrontmost ? date : lastActive[app.path] ?? started
@@ -140,6 +140,11 @@ public struct SpeedProbe: Sendable {
         facts.leftovers = Leftovers.find(systemLaunchItems(), installedApps: installedApps())
         facts.instantOn = SpeedTweak.groupsOn { ctx.readings.preference($0, $1) }
         return facts
+    }
+
+    /// Whether memory is tight now: macOS says so, or it has moved a lot to disk.
+    public static func memoryTight() -> Bool {
+        SpeedCheck.memoryTight(pressure: StatsSampler().memory().pressure, swapUsed: StatsSampler.swapUsed())
     }
 
     /// Background jobs installed for the whole Mac (they start at boot or login, for every user).

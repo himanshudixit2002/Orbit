@@ -65,6 +65,33 @@ extension AppModel {
         }
     }
 
+    /// Looks for apps left in the background that keep the Mac busy (see `SpeedCheck.toNotify`) and
+    /// sends a notice with Quit for each, once every 6 hours at most. It only reads; Quit asks politely.
+    func checkHeavyApps() async {
+        guard !isPractice, !isSnapshot, settings.speed.heavyAppNotices else {
+            heavyBefore = []
+            return
+        }
+        let tracker = heavyTracker
+        let front = NSWorkspace.shared.frontmostApplication?.bundleURL?.path(percentEncoded: false)
+        let (apps, tight) = await Task.detached(priority: .utility) {
+            (tracker.sample(frontmost: front), SpeedProbe.memoryTight())
+        }.value
+        let (notify, heavyNow) = SpeedCheck.toNotify(apps, memoryTight: tight, heavyBefore: heavyBefore,
+                                                     ignored: Set(settings.doctorIgnored))
+        heavyBefore = heavyNow
+        for app in notify {
+            let finding = SpeedCheck.heavyFinding(app)
+            notifier?.send(.heavyApp, key: "heavy \(app.path)", title: finding.title, body: finding.detail,
+                           page: .speed, every: 6 * 3600) { [weak self] in self?.quitApp(app) }
+        }
+    }
+
+    func setHeavyAppNotices(_ on: Bool) {
+        ctx.store.updateSettings { $0.speed.heavyAppNotices = on }
+        settings = ctx.store.settings
+    }
+
     func openSettings(_ pane: SettingsPane) {
         if let url = URL(string: pane.url) { NSWorkspace.shared.open(url) }
     }
@@ -167,6 +194,13 @@ struct AppUsageList: View {
             VStack(alignment: .leading, spacing: 8) {
                 if model.appUsage.isEmpty { Text("Reading…").foregroundStyle(.secondary) }
                 ForEach(model.appUsage.prefix(8)) { app in row(app) }
+                Divider()
+                SettingRow(title: "Tell me about busy apps",
+                           detail: "A quiet notice with Quit when an app you haven't used for half an hour keeps the processor busy, or holds a lot of memory while memory is tight. Never for an app playing, in a call or working.") {
+                    Toggle("Tell me about busy apps", isOn: Binding(get: { model.settings.speed.heavyAppNotices },
+                                                                  set: { model.setHeavyAppNotices($0) }))
+                        .toggleStyle(.switch).labelsHidden()
+                }
                 Text("Memory as Activity Monitor counts it; an app's helpers count toward it. Processor is the share of one core over the last few seconds.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -209,7 +243,7 @@ struct AppUsageList: View {
 
     func status(_ app: AppUsage) -> String {
         if app.isFrontmost { return "In front" }
-        if app.inUse { return "Playing" }
+        if app.inUse { return "In use" }
         if app.isApple { return "Part of macOS" }
         let idle = Int(app.idleMinutes ?? 0)
         return idle < 2 ? "Just used" : idle < 120 ? "Not used for \(idle) min" : "Not used for \(idle / 60) h"

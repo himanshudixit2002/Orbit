@@ -170,6 +170,7 @@ struct LiveProbeCheck {
         for app in facts.apps.prefix(6) {
             print("PROBE speed:   \(app.name) \(app.memory / 1_048_576) MB, \(app.cpuPercent.map { String(format: "%.1f%%", $0) } ?? "–"), \(app.processes) processes")
         }
+        print("PROBE speed: in use without being in front: \(facts.apps.filter(\.inUse).map(\.name)); memory tight \(SpeedProbe.memoryTight())")
         for leftover in facts.leftovers { print("PROBE speed: leftover \(leftover.owner): \(leftover.paths)") }
         for agent in probe.loginAgents() { print("PROBE speed: login agent \(agent.name) (\(agent.label)) at login \(agent.startsAtLogin)") }
         for finding in SpeedCheck.findings(facts) { print("PROBE speed: [\(finding.severity)] \(finding.title) — \(finding.fix?.label ?? "no fix")") }

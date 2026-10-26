@@ -101,7 +101,7 @@ import Testing
             return [ProcessStat(pid: 5, parent: 1, name: "Tool", path: "/Applications/Tool.app/Contents/MacOS/Tool",
                                 memory: 1_000, cpuTime: n == 1 ? 10 : 12)]
         }
-        readings.mediaPIDs = { [] }
+        readings.busyPIDs = { [] }
         let tracker = AppUsageTracker(readings: readings)
         let start = Date()
         tracker.noteActive("/Applications/Tool.app/", at: start)

@@ -10,8 +10,9 @@ import Testing
         await withTaskGroup(of: Void.self) { group in
             for n in 0..<8 {
                 group.addTask {
-                    // Asked for in order, slightly apart, each holding the lane for a while.
-                    try? await Task.sleep(for: .milliseconds(n * 3))
+                    // Asked for in order, apart enough that a busy Mac still wakes them in that order,
+                    // each holding the lane for a while.
+                    try? await Task.sleep(for: .milliseconds(n * 25))
                     await lane.run("change \(n)") {
                         log.withLock { $0.append("start \(n)") }
                         try? await Task.sleep(for: .milliseconds(15))

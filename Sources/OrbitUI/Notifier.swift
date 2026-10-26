@@ -8,7 +8,7 @@ import UserNotifications
 @MainActor
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     enum Kind: String, CaseIterable {
-        case failed, keepsStopping, attention, changed, edited, lowDisk, modeSchedule
+        case failed, keepsStopping, attention, changed, edited, lowDisk, modeSchedule, heavyApp
 
         /// The button that does something about it (Open Orbit is always there too).
         var act: String? {
@@ -19,6 +19,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             case .edited: "Review"
             case .lowDisk: "Clean Up"
             case .modeSchedule: "Start"
+            case .heavyApp: "Quit"
             case .keepsStopping: nil
             }
         }
@@ -48,7 +49,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         if kind != .modeSchedule, NSApp.isActive, NSApp.keyWindow?.isVisible == true { return false }
         let now = Date()
         guard NoticePolicy.allows(key: key, kind: kind.rawValue, sent: sent, now: now, every: every) else { return false }
-        sent.removeAll { now.timeIntervalSince($0.at) > max(3600, every) }
+        // Kept a day, the longest any notice waits before it may repeat (pruning by this one's own wait
+        // would let a 6-hourly notice repeat an hour later, after any other notice).
+        sent.removeAll { now.timeIntervalSince($0.at) > 24 * 3600 }
         sent.append(.init(key: key, kind: kind.rawValue, at: now))
         let id = UUID().uuidString
         if let act {

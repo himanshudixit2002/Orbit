@@ -129,6 +129,8 @@ public final class AppModel {
     var speedRunning = false
     var appUsage: [AppUsage] = []
     var loginAgents: [UserLoginAgent] = []
+    /// The apps that were heavy at the heavy-app check's last look.
+    @ObservationIgnored var heavyBefore: Set<String> = []
     private var activationObserver: NSObjectProtocol?
     var sortingInstantly = false
     @ObservationIgnored var sorterScriptChecked = false
@@ -214,6 +216,14 @@ public final class AppModel {
             while !Task.isCancelled {
                 self?.checkDiskSpace()
                 try? await Task.sleep(for: .seconds(6 * 3600), tolerance: .seconds(600))
+            }
+        }
+        // Apps left in the background that keep the Mac busy: a look every 5 minutes (a few milliseconds).
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(justStarted ? 300 : 60))
+            while !Task.isCancelled {
+                await self?.checkHeavyApps()
+                try? await Task.sleep(for: .seconds(300), tolerance: .seconds(30))
             }
         }
         // The Doctor and the Speed check look once Orbit has settled (they read app bundles and folders).
