@@ -170,7 +170,16 @@ public enum WatchedPreferences {
     public static let screenshotDomain = "com.apple.screencapture"
     public static let globalDomain = "NSGlobalDomain"
 
-    public static let keys: [(domain: String, key: String)] = [
+    /// Every key: the first ones, then those Orbit learned to change later (the Speed page's).
+    public static let keys: [(domain: String, key: String)] = {
+        var seen = Set(first.map { Baseline.key($0.domain, $0.key) })
+        return first + SpeedTweak.all.compactMap { tweak in
+            seen.insert(Baseline.key(tweak.domain, tweak.key)).inserted ? (tweak.domain, tweak.key) : nil
+        }
+    }()
+
+    /// The keys the first baselines recorded, before the list grew.
+    public static let first: [(domain: String, key: String)] = [
         (dockDomain, "persistent-apps"), (dockDomain, "persistent-others"), (dockDomain, "autohide"),
         (dockDomain, "autohide-delay"), (dockDomain, "autohide-time-modifier"), (dockDomain, "tilesize"),
         (dockDomain, "show-recents"), (dockDomain, "minimize-to-application"), (dockDomain, "mineffect"),
@@ -195,6 +204,9 @@ public struct Baseline: Codable, Sendable, Equatable {
     /// The files whose state this records: copied into `files` if they were there, missing if not.
     /// Nil for baselines made before the list was kept, which looked at Orbit 1's files only.
     public var lookedAt: [String]?
+    /// The preferences ("domain|key") whose state this records: in `preferences` if they were set,
+    /// missing if not. Nil for baselines made before the list was kept: `WatchedPreferences.first`.
+    public var preferencesLookedAt: [String]?
 
     public init(date: Date = Date(), preferences: [String: PrefValue] = [:], files: [String: String] = [:],
                 helpersOn: [Helper: Bool] = [:], wallpaper: String? = nil, gitDeltaTheme: String? = nil) {

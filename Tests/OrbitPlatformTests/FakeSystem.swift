@@ -190,18 +190,34 @@ struct SandboxFileStore: FileStore {
     }
 }
 
+/// Preferences kept in memory: writes land here and reads come back from here, as with macOS's own.
+final class FakePreferences: PreferenceWriting {
+    private let values: Locked<[String: PrefValue]>
+
+    init(_ initial: [String: PrefValue] = [:]) { values = Locked(initial) }
+
+    func set(_ domain: String, _ key: String, _ value: PrefValue?) {
+        values.withLock { $0[Baseline.key(domain, key)] = value }
+    }
+
+    func read(_ domain: String, _ key: String) -> PrefValue? { values.current[Baseline.key(domain, key)] }
+}
+
 /// A live-mode context shut inside a throwaway home: file changes stay in it, commands go to `system`,
-/// preference writes are only recorded, and every tool counts as installed.
-func sandboxContext(_ system: FakeSystem = FakeSystem()) throws -> SystemContext {
+/// and every tool counts as installed. Preference writes are only recorded, unless `prefs` is given:
+/// then they go there and are read back from there.
+func sandboxContext(_ system: FakeSystem = FakeSystem(), prefs: FakePreferences? = nil) throws -> SystemContext {
     let paths = try tempHome()
     let log = PracticeLog()
     var readings = SystemReadings()
     readings.installed = { _ in true }
     readings.processes = { system.processes() }
+    readings.processStats = { [] }
     readings.runningApps = { [] }
     readings.backgroundBlocked = { _ in false }
+    if let prefs { readings.preference = { prefs.read($0, $1) } }
     let store = StateStore(root: paths.support)
     return SystemContext(mode: .live, paths: paths, uid: 501, executor: system, files: SandboxFileStore(paths: paths),
-                         prefs: PracticePreferences(log: log), practiceLog: log, store: store,
+                         prefs: prefs ?? PracticePreferences(log: log), practiceLog: log, store: store,
                          activity: ActivityLog(root: store.root), readings: readings)
 }

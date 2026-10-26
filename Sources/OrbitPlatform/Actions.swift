@@ -388,7 +388,7 @@ public struct Actions: Sendable {
 
     func setMacMenuBarHidden(_ hidden: Bool) async -> [UndoAction] {
         let key = "_HIHideMenuBar"
-        let old = Preferences.read(WatchedPreferences.globalDomain, key)
+        let old = ctx.readings.preference(WatchedPreferences.globalDomain, key)
         guard (old?.boolValue ?? false) != hidden else { return [] }
         let script = "tell application \"System Events\" to set autohide menu bar of dock preferences to \(hidden)"
         let result = await ctx.run(Commands.appleScript(script, effect: .systemSetting,
@@ -532,7 +532,7 @@ public struct Actions: Sendable {
     public func setPreferences(_ changes: [PreferenceChange], message: String) async -> ActionOutcome {
         let undo = UndoRecorder.forThisTask(ctx.store)
         for change in changes {
-            let old = Preferences.read(change.domain, change.key)
+            let old = ctx.readings.preference(change.domain, change.key)
             guard old != change.value else { continue }
             ctx.prefs.set(change.domain, change.key, change.value)
             undo.append(.restorePreference(domain: change.domain, key: change.key, value: old))

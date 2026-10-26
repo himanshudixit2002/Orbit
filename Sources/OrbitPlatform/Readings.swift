@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import OrbitCore
 import ServiceManagement
 
 /// One process in the kernel's table.
@@ -36,9 +37,51 @@ public struct RunningProcess: Sendable, Equatable {
     }
 }
 
+/// A process's footprint: its program, the memory it holds, and the processor time it has used.
+public struct ProcessStat: Sendable, Equatable {
+    public let pid: Int32
+    public let name: String
+    /// The program's path ("" when macOS won't say).
+    public let path: String
+    /// Memory it holds now (resident), in bytes.
+    public let memory: UInt64
+    /// Processor time since it started (user and system), in seconds.
+    public let cpuTime: Double
+
+    public init(pid: Int32, name: String, path: String, memory: UInt64, cpuTime: Double) {
+        self.pid = pid
+        self.name = name
+        self.path = path
+        self.memory = memory
+        self.cpuTime = cpuTime
+    }
+
+    /// Every process macOS lets Orbit look at (as `ps` sees them), read without helper processes.
+    public static func all() -> [ProcessStat] {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        // Task times come in Mach time units (ticks on Apple silicon).
+        let seconds = Double(timebase.numer) / Double(max(timebase.denom, 1)) / 1_000_000_000
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+        return RunningProcess.all().compactMap { process in
+            var info = proc_taskinfo()
+            let size = Int32(MemoryLayout<proc_taskinfo>.size)
+            guard process.pid > 0, proc_pidinfo(process.pid, PROC_PIDTASKINFO, 0, &info, size) == size else { return nil }
+            let length = proc_pidpath(process.pid, &buffer, UInt32(buffer.count))
+            let path = length > 0 ? String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self) : ""
+            return ProcessStat(pid: process.pid, name: process.name, path: path, memory: info.pti_resident_size,
+                               cpuTime: Double(info.pti_total_user + info.pti_total_system) * seconds)
+        }
+    }
+}
+
 /// What Orbit reads straight from macOS rather than through commands. Tests swap in their own.
 public struct SystemReadings: Sendable {
     public var processes: @Sendable () -> [RunningProcess] = { RunningProcess.all() }
+    /// Each process's program, memory and processor time (the Speed check and heavy-app notices).
+    public var processStats: @Sendable () -> [ProcessStat] = { ProcessStat.all() }
+    /// A preference as macOS has it now (what `defaults read` shows).
+    public var preference: @Sendable (_ domain: String, _ key: String) -> PrefValue? = { Preferences.read($0, $1) }
     /// Bundle ids of the apps running now.
     public var runningApps: @Sendable () -> Set<String> = {
         Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))

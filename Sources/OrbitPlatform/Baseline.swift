@@ -7,7 +7,7 @@ extension Actions {
         guard ctx.store.baseline == nil, !ctx.store.baselineUnreadable else { return }
         var baseline = Baseline(wallpaper: wallpaper)
         for (domain, key) in WatchedPreferences.keys {
-            if let value = Preferences.read(domain, key) { baseline.preferences[Baseline.key(domain, key)] = value }
+            if let value = ctx.readings.preference(domain, key) { baseline.preferences[Baseline.key(domain, key)] = value }
         }
         let folder = ctx.store.root.appending(path: "Backups/Before Orbit")
         let files = ManagedFile.allCases.map { $0.url(paths) } + [paths.tmuxConf, paths.skhdrc, paths.btopConf]
@@ -17,6 +17,7 @@ extension Actions {
             }
         }
         baseline.lookedAt = files.map { $0.path(percentEncoded: false) }.sorted()
+        baseline.preferencesLookedAt = WatchedPreferences.keys.map { Baseline.key($0.domain, $0.key) }.sorted()
         for helper in Helper.allCases {
             baseline.helpersOn[helper] = await isRunning(helper)
         }
@@ -31,9 +32,15 @@ extension Actions {
         return Set(baseline.lookedAt ?? first.map { $0.path(percentEncoded: false) })
     }
 
-    /// Files Orbit began to manage after the baseline was made (the Downloads sorter, Warp's theme): as
-    /// they are now is how they were before Orbit, unless Orbit has written them since. Runs at launch,
-    /// before anything can write them, so "Back to before Orbit" never mistakes them for Orbit's own.
+    /// The preferences ("domain|key") the baseline knows the state of.
+    func preferencesLookedAt(_ baseline: Baseline) -> Set<String> {
+        Set(baseline.preferencesLookedAt ?? WatchedPreferences.first.map { Baseline.key($0.domain, $0.key) })
+    }
+
+    /// Files and preferences Orbit began to manage after the baseline was made (the Downloads sorter,
+    /// Warp's theme, the Speed page's animation settings): as they are now is how they were before
+    /// Orbit, unless Orbit has changed them since. Runs at launch, before anything can change them, so
+    /// "Back to before Orbit" never mistakes them for Orbit's own (or clears what the user had set).
     public func topUpBaseline() {
         guard var baseline = ctx.store.baseline else { return }
         var looked = lookedAt(baseline)
@@ -48,9 +55,36 @@ extension Actions {
             guard Self.before(path, baseline: baseline, journal: ctx.store.journal) == .unknown else { continue }
             if let copy = try? LiveFileStore().backup(url, into: folder) { baseline.files[path] = copy.path(percentEncoded: false) }
         }
-        guard looked != before || baseline.lookedAt == nil else { return }
+        var lookedPrefs = preferencesLookedAt(baseline)
+        let beforePrefs = lookedPrefs
+        for (domain, key) in WatchedPreferences.keys {
+            let id = Baseline.key(domain, key)
+            guard lookedPrefs.insert(id).inserted else { continue }
+            switch Self.beforePreference(domain, key, journal: ctx.store.journal) {
+            case .value(let original): baseline.preferences[id] = original
+            case .unknown: baseline.preferences[id] = ctx.readings.preference(domain, key)
+            }
+        }
+        guard looked != before || baseline.lookedAt == nil || lookedPrefs != beforePrefs || baseline.preferencesLookedAt == nil else { return }
         baseline.lookedAt = looked.sorted()
+        baseline.preferencesLookedAt = lookedPrefs.sorted()
         ctx.store.setBaseline(baseline)
+    }
+
+    enum PreferenceBefore: Equatable {
+        /// What it was before Orbit first changed it (nil: not set).
+        case value(PrefValue?)
+        case unknown
+    }
+
+    /// How a preference was before Orbit, from the first change in the history that touched it.
+    static func beforePreference(_ domain: String, _ key: String, journal: [JournalEntry]) -> PreferenceBefore {
+        for entry in journal {
+            for case .restorePreference(let d, let k, let value) in entry.actions where d == domain && k == key {
+                return .value(value)
+            }
+        }
+        return .unknown
     }
 
     /// Puts settings, config files and helpers back the way they were before Orbit.
@@ -60,9 +94,19 @@ extension Actions {
         }
         let undo = UndoRecorder.forThisTask(ctx.store)
         var domains = Set<String>()
+        let lookedPrefs = preferencesLookedAt(baseline)
         for (domain, key) in WatchedPreferences.keys {
-            let before = baseline.preferences[Baseline.key(domain, key)]
-            let now = Preferences.read(domain, key)
+            let id = Baseline.key(domain, key)
+            // Nothing says how it was before Orbit (neither the record nor the history): left alone.
+            let before: PrefValue?
+            if lookedPrefs.contains(id) {
+                before = baseline.preferences[id]
+            } else if case .value(let original) = Self.beforePreference(domain, key, journal: ctx.store.journal) {
+                before = original
+            } else {
+                continue
+            }
+            let now = ctx.readings.preference(domain, key)
             guard before != now else { continue }
             if key == "_HIHideMenuBar" {
                 undo += await setMacMenuBarHidden(before?.boolValue ?? false)

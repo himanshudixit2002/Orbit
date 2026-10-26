@@ -142,6 +142,21 @@ struct LiveProbeCheck {
         print("PROBE profile: would replace hand-edited files here: \(actions.filesImportReplaces(back))")
     }
 
+    /// Per-process readings on this Mac: how many processes Orbit can see into, and the biggest (it only reads).
+    @Test func processStatsOnThisMac() {
+        let start = ContinuousClock.now
+        let stats = ProcessStat.all()
+        let all = RunningProcess.all()
+        print("PROBE processes: \(stats.count) of \(all.count) readable in \(ContinuousClock.now - start); swap \(StatsSampler.swapUsed() / 1_048_576) MB")
+        for stat in stats.sorted(by: { $0.memory > $1.memory }).prefix(5) {
+            print("PROBE processes:   \(stat.memory / 1_048_576) MB  \(Int(stat.cpuTime)) s  \(stat.name)  \(stat.path.suffix(60))")
+        }
+        for name in ["Siri AI", "sirittsd", "corespeechd", "coreduetd", "WindowServer"] {
+            let match = stats.filter { $0.name == name }
+            print("PROBE processes: \(name): \(match.isEmpty ? "not readable or not running" : "\(Int(match.reduce(0) { $0 + $1.cpuTime })) s of CPU")")
+        }
+    }
+
     /// What theme sync would change on this Mac (it only reads).
     @Test func themeSyncOnThisMac() throws {
         let ctx = SystemContext.make(mode: .live)

@@ -38,7 +38,7 @@ extension Actions {
                 return "Antigravity IDE has its own colours back."
             case (.accent, true):
                 let before = settings.themeSync.accent ? settings.themeSync.accentBefore
-                                                       : Preferences.read(WatchedPreferences.globalDomain, MacAccent.key)
+                                                       : ctx.readings.preference(WatchedPreferences.globalDomain, MacAccent.key)
                 undo += changeSettings {
                     $0.themeSync.accent = true
                     $0.themeSync.accentBefore = before
@@ -84,7 +84,7 @@ extension Actions {
 
     /// The accent colour back as it was, if it's still the one Orbit chose.
     func accentSyncOff() -> [UndoAction] {
-        let now = Preferences.read(WatchedPreferences.globalDomain, MacAccent.key)
+        let now = ctx.readings.preference(WatchedPreferences.globalDomain, MacAccent.key)
         guard now == .int(MacAccent.matching(settings.theme).rawValue) else { return [] }
         return setAccent(settings.themeSync.accentBefore)
     }
@@ -112,7 +112,7 @@ extension Actions {
 
     /// Sets (or, with nil, clears) the accent colour, and tells apps so they show it at once.
     func setAccent(_ value: PrefValue?) -> [UndoAction] {
-        let old = Preferences.read(WatchedPreferences.globalDomain, MacAccent.key)
+        let old = ctx.readings.preference(WatchedPreferences.globalDomain, MacAccent.key)
         guard old != value else { return [] }
         ctx.prefs.set(WatchedPreferences.globalDomain, MacAccent.key, value)
         announceAccentChange()

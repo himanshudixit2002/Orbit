@@ -124,6 +124,14 @@ public final class StatsSampler: Sendable {
         return (used, Int(pressure))
     }
 
+    /// Memory moved out to disk because it didn't fit (swap), in bytes.
+    public static func swapUsed() -> UInt64 {
+        var usage = xsw_usage()
+        var size = MemoryLayout<xsw_usage>.size
+        guard sysctlbyname("vm.swapusage", &usage, &size, nil, 0) == 0 else { return 0 }
+        return usage.xsu_used
+    }
+
     /// Free space as Finder counts it (purgeable space counts as free).
     func disk() -> (free: Int64, total: Int64) {
         let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey])
