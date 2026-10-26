@@ -7,6 +7,8 @@ extension AppModel {
     func readInstant() async {
         let on = await Task.detached(priority: .userInitiated) { [actions] in actions.instantGroupsOn() }.value
         if on != instantOn { instantOn = on }
+        // The Speed check's tip about animations goes as soon as they're all out.
+        if on.count == SpeedTweak.Group.allCases.count { speedFindings.removeAll { $0.id == "speed-instant" } }
     }
 
     func setInstant(_ groups: Set<SpeedTweak.Group>, on: Bool) {
