@@ -82,8 +82,22 @@ public struct SystemReadings: Sendable {
     public var backgroundBlocked: @Sendable (URL) -> Bool = { SMAppService.statusForLegacyPlist(at: $0) == .requiresApproval }
     /// Whether a tool or app is installed at this path.
     public var installed: @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    /// Whether Orbit has Full Disk Access, so looking into other apps' data and your folders never
+    /// brings up macOS's questions.
+    public var fullDiskAccess: @Sendable () -> Bool = { FullDiskAccess.granted() }
 
     public init() {}
+}
+
+/// Full Disk Access, checked by opening a file only it opens (macOS's privacy database). Without it the
+/// open just fails: nothing is asked.
+public enum FullDiskAccess {
+    public static func granted() -> Bool {
+        let fd = open("/Library/Application Support/com.apple.TCC/TCC.db", O_RDONLY)
+        guard fd >= 0 else { return false }
+        close(fd)
+        return true
+    }
 }
 
 /// Who is busy on purpose, from macOS's power assertions (what `pmset -g assertions` lists): playing

@@ -636,6 +636,9 @@ public struct Actions: Sendable {
                     continue
                 }
                 await ctx.run(Commands.openApp(at: path, name: name, background: true))
+            case .colima(let wasRunning):
+                let result = await ctx.run(Commands.colima(wasRunning ? .start : .stop))
+                if !result.ok { failures.append("Colima: \(result.failureMessage)") }
             case .pausedState(let paused):
                 ctx.store.setPaused(paused)
             case .arrangeWindows(let layout):

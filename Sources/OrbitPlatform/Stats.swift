@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import OrbitCore
 
 /// One reading of how busy the Mac is.
 public struct SystemSample: Sendable, Equatable {
@@ -122,6 +123,33 @@ public final class StatsSampler: Sendable {
         let app = UInt64(stats.internal_page_count) - min(UInt64(stats.purgeable_count), UInt64(stats.internal_page_count))
         let used = (app + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)) * page
         return (used, Int(pressure))
+    }
+
+    /// Where memory goes now, as Activity Monitor splits it: apps, macOS's own, compressed, cached files
+    /// and free, with what was moved to disk and how tight it is.
+    public static func memoryBreakdown() -> MemoryBreakdown {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
+        let result = withUnsafeMutablePointer(to: &stats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count) }
+        }
+        var memory = MemoryBreakdown()
+        memory.total = ProcessInfo.processInfo.physicalMemory
+        memory.swap = swapUsed()
+        var pressure: Int32 = 1
+        var size = MemoryLayout<Int32>.size
+        sysctlbyname("kern.memorystatus_vm_pressure_level", &pressure, &size, nil, 0)
+        memory.pressure = Int(pressure)
+        guard result == KERN_SUCCESS else { return memory }
+        let page = UInt64(sysconf(_SC_PAGESIZE))
+        let purgeable = min(UInt64(stats.purgeable_count), UInt64(stats.internal_page_count))
+        memory.apps = (UInt64(stats.internal_page_count) - purgeable) * page
+        memory.wired = UInt64(stats.wire_count) * page
+        memory.compressed = UInt64(stats.compressor_page_count) * page
+        memory.cached = (UInt64(stats.external_page_count) + purgeable) * page
+        // free_count includes the pages read ahead on spec (vm_stat lists those apart).
+        memory.free = UInt64(stats.free_count) * page
+        return memory
     }
 
     /// Memory moved out to disk because it didn't fit (swap), in bytes.

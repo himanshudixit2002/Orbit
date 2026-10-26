@@ -59,6 +59,10 @@ extension AppModel {
         }
     }
 
+    func stopColima() {
+        perform("colima", "Stopped Colima's virtual machine") { [actions] _ in await actions.stopColima() }
+    }
+
     func stopCommand(_ command: BusyCommand) {
         Task {
             await performNow("stop-\(command.pid)", "Asked \(command.name) to stop") { [actions] _ in
@@ -176,6 +180,8 @@ struct SpeedPage: View {
             }
             SectionTitle(text: "What slows it down")
             SpeedFindingsPanel()
+            SectionTitle(text: "Memory")
+            MemoryPanel()
             SectionTitle(text: "Using the most now")
             AppUsageList()
             SectionTitle(text: "Starts with your Mac")
@@ -231,6 +237,110 @@ struct SpeedFindingsPanel: View {
             return "\(name) is asked to stop: it can tidy up first, and its terminal stays open. There's no Undo: run it again when you need it."
         }
         return "It's asked to quit as if you chose Quit: it can save first, and it's never forced. Undo opens it again."
+    }
+}
+
+/// Where memory goes, in plain words, and one click to quit the apps you've left alone that hold the most.
+struct MemoryPanel: View {
+    @Environment(AppModel.self) private var model
+    @State private var memory = MemoryBreakdown()
+    @State private var machines: [VirtualMachineUsage] = []
+    @State private var confirming = false
+    @State private var stoppingColima = false
+
+    var body: some View {
+        let idle = IdleApps.toQuit(model.appUsage)
+        let idleMemory = idle.reduce(UInt64(0)) { $0 + $1.memory }
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(memory.summary, systemImage: memory.pressure >= 2 ? "exclamationmark.triangle.fill" : "memorychip")
+                    .foregroundStyle(memory.pressure >= 4 ? Color.red : memory.pressure >= 2 ? Color.orange : Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if memory.total > 0 {
+                    bar
+                    VStack(spacing: 6) {
+                        ForEach(parts, id: \.title) { part in
+                            HStack(spacing: 10) {
+                                Circle().fill(part.color).frame(width: 9, height: 9)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(part.title).font(.body.weight(.medium))
+                                    Text(part.detail).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(bytes(Int64(part.size))).font(.callout.monospacedDigit().weight(.semibold))
+                            }
+                        }
+                    }
+                }
+                ForEach(machines) { machine in
+                    HStack(spacing: 12) {
+                        Image(systemName: "shippingbox.fill").foregroundStyle(Hue.blue.top)
+                        Text("\(machine.name) holds \(bytes(Int64(machine.memory)))\(machine.isColima ? ": stop it when you're not using containers." : ".")")
+                            .font(.callout).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if machine.isColima {
+                            Button("Stop Colima") { stoppingColima = true }.buttonStyle(.glass).disabled(model.isBusy("colima"))
+                        }
+                    }
+                }
+                Divider()
+                HStack(spacing: 12) {
+                    Text(idle.isEmpty ? "No app you've left alone for an hour holds much memory."
+                                      : "\(idle.count) app\(idle.count == 1 ? "" : "s") you haven't used for an hour hold \(bytes(Int64(idleMemory))): \(idle.map(\.name).joined(separator: ", ")).")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button(idle.count == 1 ? "Quit it" : "Quit them") { confirming = true }
+                        .buttonStyle(.glassProminent).disabled(idle.isEmpty)
+                }
+            }
+        }
+        .task {
+            // Fresh every few seconds while the page shows (macOS's counters and the process list: a few milliseconds).
+            let readings = model.ctx.readings
+            let colima = FileManager.default.isExecutableFile(atPath: Tool.colima)
+            while !Task.isCancelled {
+                (memory, machines) = await Task.detached(priority: .utility) {
+                    (StatsSampler.memoryBreakdown(), VirtualMachines.find(readings.processStats(), colimaInstalled: colima))
+                }.value
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+        .confirmationDialog(Text("Stop Colima?"), isPresented: $stoppingColima) {
+            Button("Stop Colima") { model.stopColima() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Its containers stop too (databases, servers). Undo starts it again, and containers set to restart come back with it.")
+        }
+        .confirmationDialog(Text("Quit \(idle.map(\.name).joined(separator: ", "))?"), isPresented: $confirming) {
+            Button(idle.count == 1 ? "Quit" : "Quit \(idle.count) apps") { for app in idle { model.quitApp(app) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Each is asked to quit as if you chose Quit: it can save first, and it's never forced. Undo opens it again.")
+        }
+    }
+
+    var parts: [(title: String, detail: String, size: UInt64, color: Color)] {
+        [("Apps", "What open apps hold for themselves.", memory.apps, Hue.purple.top),
+         ("macOS", "What macOS keeps for itself; it can't be moved.", memory.wired, Hue.gray.top),
+         ("Compressed", "Squeezed to make room for the rest.", memory.compressed, Hue.orange.top),
+         ("Cached files", "Kept to make things quick, and handed back the moment an app needs it.", memory.cached, Hue.cyan.top),
+         ("Free", "Not in use at all.", memory.free, Hue.green.top)]
+        + (memory.swap > 0 ? [("Moved to disk", "What didn't fit in memory earlier (swap): slower to get back.", memory.swap, Hue.red.top)] : [])
+    }
+
+    var bar: some View {
+        GeometryReader { geo in
+            let total = Double(max(1, memory.total))
+            HStack(spacing: 2) {
+                ForEach(parts.filter { $0.title != "Moved to disk" }, id: \.title) { part in
+                    Rectangle().fill(part.color).frame(width: max(2, geo.size.width * Double(part.size) / total))
+                }
+            }
+            .clipShape(Capsule())
+        }
+        .frame(height: 14)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(memory.summary)
     }
 }
 

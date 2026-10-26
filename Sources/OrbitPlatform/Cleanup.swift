@@ -58,6 +58,8 @@ struct CleanupTarget {
     let kind: CleanupItem.Kind
     let symbol: String
     var app: String?
+    /// How safe it is, when the path doesn't say (a cache folder is downloaded again; the rest rebuilds).
+    var safety: CleanupItem.Safety?
 
     static let all: [CleanupTarget] = [
         CleanupTarget(path: "Library/Developer/Xcode/DerivedData", title: "Xcode build leftovers",
@@ -80,6 +82,15 @@ struct CleanupTarget {
                       detail: "Pods are downloaded again when needed.", kind: .developer, symbol: "cube.fill"),
         CleanupTarget(path: ".gradle/caches", title: "Gradle cache",
                       detail: "Rebuilt on the next Android or Java build.", kind: .developer, symbol: "gearshape.2.fill"),
+        CleanupTarget(path: ".cache/codex-runtimes", title: "Codex runtimes",
+                      detail: "Downloaded again when Codex next needs them.", kind: .developer, symbol: "terminal.fill",
+                      app: "com.openai.codex", safety: .downloadsAgain),
+        CleanupTarget(path: ".cache/puppeteer", title: "Puppeteer's browsers",
+                      detail: "Downloaded again when a project's tests need them.", kind: .developer, symbol: "globe",
+                      safety: .downloadsAgain),
+        CleanupTarget(path: "Library/Caches/ms-playwright", title: "Playwright's browsers",
+                      detail: "Downloaded again when a project's tests need them.", kind: .developer, symbol: "globe",
+                      safety: .downloadsAgain),
         CleanupTarget(path: "Library/Caches/Homebrew", title: "Homebrew downloads",
                       detail: "Old installers Homebrew keeps around.", kind: .caches, symbol: "mug.fill"),
         CleanupTarget(path: "Library/Caches/Google/Chrome", title: "Chrome cache",
@@ -107,7 +118,7 @@ public struct CleanupScanner: Sendable {
                     guard size > 0 else { return nil }
                     var item = CleanupItem(id: url.path(percentEncoded: false), title: target.title, detail: target.detail, kind: target.kind,
                                            urls: [url], size: size, symbol: target.symbol)
-                    item.safety = target.kind == .caches || target.path.contains("Cache") || target.path.contains("store") ? .downloadsAgain : .rebuilds
+                    item.safety = target.safety ?? (target.kind == .caches || target.path.contains("Cache") || target.path.contains("store") ? .downloadsAgain : .rebuilds)
                     item.appMustBeQuit = target.app
                     item.why = "\(target.detail) Moving it to the Trash is safe: \(item.safety == .rebuilds ? "it's rebuilt" : "what's needed is fetched again") the next time something asks for it."
                     return item
@@ -242,13 +253,24 @@ public struct CleanupScanner: Sendable {
     }
 
     /// Docker Desktop's data, when Docker Desktop itself is gone.
+    /// Measured only with Full Disk Access: looking inside another app's data without it makes macOS ask.
     func dockerLeftovers() -> [CleanupItem] {
         let data = ctx.paths.at("Library/Containers/com.docker.docker")
         guard FileManager.default.fileExists(atPath: data.path(percentEncoded: false)),
               !FileManager.default.fileExists(atPath: "/Applications/Docker.app") else { return [] }
+        let shared = ctx.paths.at("Library/Group Containers/group.com.docker")
+        let urls = [data] + (FileManager.default.fileExists(atPath: shared.path(percentEncoded: false)) ? [shared] : [])
+        guard ctx.readings.fullDiskAccess() else {
+            var item = CleanupItem(id: data.path(percentEncoded: false), title: "Docker Desktop's leftover data",
+                                   detail: "Give Orbit Full Disk Access to measure and clear it.", kind: .tools, urls: urls,
+                                   size: 0, symbol: "shippingbox")
+            item.safety = .guideOnly
+            item.why = "Docker Desktop isn't installed any more, but its images, containers and volumes may still be stored. macOS only lets Orbit look inside another app's data with Full Disk Access."
+            return [item]
+        }
         var item = CleanupItem(id: data.path(percentEncoded: false), title: "Docker Desktop's leftover data",
-                               detail: "Docker Desktop isn't installed any more.", kind: .tools, urls: [data],
-                               size: Self.allocatedSize(data), symbol: "shippingbox")
+                               detail: "Docker Desktop isn't installed any more.", kind: .tools, urls: urls,
+                               size: urls.reduce(0) { $0 + Self.allocatedSize($1) }, symbol: "shippingbox")
         item.safety = .yourCall
         item.why = "Images, containers and volumes from when Docker Desktop was installed. If you put Docker back and need them, they'd be gone: only clear it if you're done with them."
         return [item]

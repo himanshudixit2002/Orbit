@@ -12,6 +12,7 @@ public enum Tool {
     public static let yabai = homebrew + "/bin/yabai"
     public static let skhd = homebrew + "/bin/skhd"
     public static let borders = homebrew + "/bin/borders"
+    public static let colima = homebrew + "/bin/colima"
     public static let sketchybar = homebrew + "/bin/sketchybar"
     public static let bat = homebrew + "/bin/bat"
     public static let jq = homebrew + "/bin/jq"
@@ -257,6 +258,12 @@ public enum Commands {
     public static func brewServicesInfo() -> Command {
         Command(Tool.brew, ["services", "info", "--all", "--json"], effect: .readOnly,
                 summary: "List Homebrew background helpers", timeout: 20)
+    }
+
+    /// Starts or stops Colima's virtual machine (and the containers in it).
+    public static func colima(_ verb: ServiceVerb) -> Command {
+        Command(Tool.colima, [verb.rawValue], effect: .service,
+                summary: verb == .stop ? "Stop Colima's virtual machine" : "Start Colima's virtual machine", timeout: 180)
     }
 
     public static func brewService(_ verb: ServiceVerb, _ formula: String, name: String) -> Command {

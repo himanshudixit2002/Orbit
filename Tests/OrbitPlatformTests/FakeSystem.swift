@@ -215,6 +215,7 @@ func sandboxContext(_ system: FakeSystem = FakeSystem(), prefs: FakePreferences?
     readings.processStats = { stats }
     readings.runningApps = { [] }
     readings.backgroundBlocked = { _ in false }
+    readings.fullDiskAccess = { true }
     if let prefs { readings.preference = { prefs.read($0, $1) } }
     let store = StateStore(root: paths.support)
     return SystemContext(mode: .live, paths: paths, uid: 501, executor: system, files: SandboxFileStore(paths: paths),

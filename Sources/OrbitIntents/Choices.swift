@@ -53,7 +53,7 @@ enum PageChoice: String, AppEnum {
         .developer: DisplayRepresentation(title: "Developer", image: .init(systemName: "hammer.fill")),
         .monitor: DisplayRepresentation(title: "Monitor", image: .init(systemName: "waveform.path.ecg")),
         .speed: DisplayRepresentation(title: "Speed", image: .init(systemName: "bolt.fill")),
-        .cleanup: DisplayRepresentation(title: "Cleanup", image: .init(systemName: "sparkles")),
+        .cleanup: DisplayRepresentation(title: "Storage", image: .init(systemName: "sparkles")),
         .dockFinder: DisplayRepresentation(title: "Dock & Finder", image: .init(systemName: "dock.rectangle")),
         .apps: DisplayRepresentation(title: "Apps", image: .init(systemName: "square.grid.2x2.fill")),
         .health: DisplayRepresentation(title: "Health & Undo", image: .init(systemName: "heart.text.square.fill"))

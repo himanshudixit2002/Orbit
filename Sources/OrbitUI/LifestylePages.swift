@@ -433,6 +433,8 @@ struct CleanupPage: View {
         let visible = cleanup.items.filter { !cleanup.trashed.contains($0.id) }
         VStack(alignment: .leading, spacing: 18) {
             PageHeader(page: .cleanup)
+            StorageOverview()
+            SectionTitle(text: "Clear safely")
             GlassPanel(glow: Hue.yellow.top) {
                 HStack(spacing: 22) {
                     if visible.isEmpty {
@@ -492,6 +494,10 @@ struct CleanupPage: View {
                     }
                 }
             }
+            SectionTitle(text: "Apps")
+            AppsPanel()
+            SectionTitle(text: "Large files")
+            LargeFilesPanel()
             HStack {
                 if cleanup.trashSize > 0 {
                     Label("The Trash holds \(bytes(cleanup.trashSize)). Empty it in Finder when you're sure, to get the space back.",

@@ -62,6 +62,16 @@ extension Actions {
         return ActionOutcome(ok: true, message: "\(name) has quit.", undo: [.reopenApp(path: target, name: name)])
     }
 
+    /// Stops Colima's virtual machine and the containers in it, giving its memory back; Undo starts it again.
+    public func stopColima() async -> ActionOutcome {
+        await steps { undo in
+            let result = await ctx.run(Commands.colima(.stop))
+            guard result.ok else { throw StepFailed(message: "Colima didn't stop: \(result.failureMessage)") }
+            undo += [.colima(wasRunning: true)]
+            return "Colima's virtual machine is stopped and its memory is free. Undo, or `colima start`, starts it again."
+        }
+    }
+
     /// Asks a command run in a terminal to stop (it can tidy up first), only if that same program still
     /// runs under that number as one of your own processes. The terminal stays open. In practice mode
     /// it's only written down.

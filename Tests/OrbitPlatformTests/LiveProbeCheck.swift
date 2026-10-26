@@ -157,6 +157,22 @@ struct LiveProbeCheck {
         }
     }
 
+    /// Where this Mac's disk goes, its biggest apps and files, and its memory (it only reads, and without
+    /// Full Disk Access it stays out of the folders macOS would ask about).
+    @Test func storageOnThisMac() async {
+        let ctx = SystemContext.make(mode: .live)
+        let access = FullDiskAccess.granted()
+        let start = ContinuousClock.now
+        let probe = StorageProbe(ctx)
+        let (areas, files) = await probe.measure(fullAccess: access)
+        let apps = await probe.apps()
+        print("PROBE storage took \(ContinuousClock.now - start); Full Disk Access \(access)")
+        for area in areas { print("PROBE storage:   \(area.kind.title) \(area.hidden ? "hidden" : ByteCountFormatter.string(fromByteCount: area.size, countStyle: .file))") }
+        for app in apps.prefix(8) { print("PROBE storage: app \(app.name) \(ByteCountFormatter.string(fromByteCount: app.size, countStyle: .file)) \(app.lastUsedText()) removable \(app.removable)") }
+        for file in files.prefix(8) { print("PROBE storage: file \(file.path) \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))") }
+        print("PROBE memory: \(StatsSampler.memoryBreakdown().summary)")
+    }
+
     /// When this Mac started, when you logged in, and what has used the processor most since (it only reads).
     @Test func startupOnThisMac() throws {
         let booted = try #require(StartupProbe.bootTime())

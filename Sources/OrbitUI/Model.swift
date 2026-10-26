@@ -98,6 +98,7 @@ public final class AppModel {
     let monitor = MonitorModel()
     let modes: ModesModel
     let cleanup: CleanupModel
+    let storage: StorageModel
     var openWindow: OpenWindowAction?
     var isSnapshot = false
     var karabinerStep: KarabinerInstaller.Step = .idle
@@ -161,6 +162,7 @@ public final class AppModel {
         startups = ctx.store.startups
         modes = ModesModel(ctx: ctx)
         cleanup = CleanupModel(ctx: ctx)
+        storage = StorageModel(ctx: ctx)
         barFeeder = BarFeeder(ctx: ctx)
         instantSorter = InstantSorter(ctx: ctx)
         speedTracker = AppUsageTracker(readings: ctx.readings)

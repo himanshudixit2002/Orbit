@@ -76,7 +76,7 @@ public enum DockModel {
 /// Places in System Settings Orbit sends people to.
 public enum SettingsPane: String, Sendable, CaseIterable {
     case accessibility, inputMonitoring, screenRecording, filesAndFolders, automation, loginItems, desktopAndDock,
-         wallpaper, keyboard, privacy, siri, spotlight, display
+         wallpaper, keyboard, privacy, siri, spotlight, display, fullDiskAccess
 
     public var title: String {
         switch self {
@@ -93,6 +93,7 @@ public enum SettingsPane: String, Sendable, CaseIterable {
         case .siri: "Siri settings"
         case .spotlight: "Spotlight settings"
         case .display: "Display settings"
+        case .fullDiskAccess: "Full Disk Access settings"
         }
     }
 
@@ -104,6 +105,7 @@ public enum SettingsPane: String, Sendable, CaseIterable {
         case .screenRecording: return privacy + "Privacy_ScreenCapture"
         case .filesAndFolders: return privacy + "Privacy_FilesAndFolders"
         case .automation: return privacy + "Privacy_Automation"
+        case .fullDiskAccess: return privacy + "Privacy_AllFiles"
         case .privacy: return "x-apple.systempreferences:com.apple.preference.security"
         case .loginItems: return "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
         case .desktopAndDock: return "x-apple.systempreferences:com.apple.Desktop-Settings.extension"
