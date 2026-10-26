@@ -57,6 +57,10 @@ import Testing
         #expect(memory.summary == "Memory is fine: 6 GB of 16 GB is free or can be freed at once.")
         memory.swap = 1_073_741_824
         #expect(memory.summary == "Memory is fine: 6 GB of 16 GB is free or can be freed at once, though 1 GB was moved to disk earlier.")
+        // A lot moved to disk counts as tight, as the Speed check has it.
+        memory.swap = 3 * 1_073_741_824
+        #expect(memory.tight && memory.summary == "Memory has been tight: 3 GB was moved to disk, and getting it back is slow. Quitting an app you're not using helps.")
+        memory.swap = 1_073_741_824
         memory.pressure = 2
         #expect(memory.summary.hasPrefix("Memory is getting tight"))
         memory.pressure = 4
@@ -65,8 +69,9 @@ import Testing
 
     @Test func virtualMachinesAreFoundAndColimasIsNamed() {
         let vm = "/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine"
-        let stats = [ProcessStat(pid: 5, name: "com.apple.Virtualization.VirtualMachine", path: vm, memory: 6_000, cpuTime: 1),
-                     ProcessStat(pid: 6, name: "com.apple.Virtualization.VirtualMachine", path: vm, memory: 2_000, cpuTime: 1),
+        // macOS hands process names over cut short.
+        let stats = [ProcessStat(pid: 5, name: "com.apple.Virtu", path: vm, memory: 6_000, cpuTime: 1),
+                     ProcessStat(pid: 6, name: "com.apple.Virtu", path: vm, memory: 2_000, cpuTime: 1),
                      ProcessStat(pid: 7, name: "limactl", path: "/opt/homebrew/bin/limactl", memory: 30, cpuTime: 1)]
         let found = VirtualMachines.find(stats, colimaInstalled: true)
         #expect(found.map(\.name) == ["Colima's Linux machine", "A virtual machine"] && found.map(\.memory) == [6_000, 2_000])

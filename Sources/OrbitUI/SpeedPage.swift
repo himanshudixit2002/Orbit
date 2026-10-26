@@ -253,8 +253,8 @@ struct MemoryPanel: View {
         let idleMemory = idle.reduce(UInt64(0)) { $0 + $1.memory }
         GlassPanel {
             VStack(alignment: .leading, spacing: 12) {
-                Label(memory.summary, systemImage: memory.pressure >= 2 ? "exclamationmark.triangle.fill" : "memorychip")
-                    .foregroundStyle(memory.pressure >= 4 ? Color.red : memory.pressure >= 2 ? Color.orange : Color.primary)
+                Label(memory.summary, systemImage: memory.tight ? "exclamationmark.triangle.fill" : "memorychip")
+                    .foregroundStyle(memory.pressure >= 4 ? Color.red : memory.tight ? Color.orange : Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 if memory.total > 0 {
                     bar

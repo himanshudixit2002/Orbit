@@ -226,15 +226,20 @@ public struct MemoryBreakdown: Sendable, Equatable {
     /// How it's going, in a sentence.
     public var summary: String {
         let gb = { (bytes: UInt64) in ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory) }
-        switch pressure {
-        case 4...:
+        if pressure >= 4 {
             return "Memory is very tight: the Mac is moving memory to disk (\(gb(swap)) so far), which slows everything. Quit apps you're not using."
-        case 2...:
-            return "Memory is getting tight: macOS is squeezing apps' memory to make room. Quitting an app you're not using helps."
-        default:
-            return "Memory is fine: \(gb(available)) of \(gb(total)) is free or can be freed at once\(swap > 512 * 1_048_576 ? ", though \(gb(swap)) was moved to disk earlier" : "")."
         }
+        if pressure >= 2 {
+            return "Memory is getting tight: macOS is squeezing apps' memory to make room. Quitting an app you're not using helps."
+        }
+        if tight {
+            return "Memory has been tight: \(gb(swap)) was moved to disk, and getting it back is slow. Quitting an app you're not using helps."
+        }
+        return "Memory is fine: \(gb(available)) of \(gb(total)) is free or can be freed at once\(swap > 512 * 1_048_576 ? ", though \(gb(swap)) was moved to disk earlier" : "")."
     }
+
+    /// Tight as the Speed check counts it: macOS says so, or it has moved a lot to disk.
+    public var tight: Bool { SpeedCheck.memoryTight(pressure: pressure, swapUsed: swap) }
 }
 
 /// A virtual machine running on the Mac (Colima's Linux machine for containers, say) and the memory it holds.
@@ -257,9 +262,10 @@ public struct VirtualMachineUsage: Sendable, Equatable, Identifiable {
 
 public enum VirtualMachines {
     /// macOS runs each virtual machine in a process of its own, outside any app, so the apps list misses them.
+    /// Found by program: macOS cuts process names short ("com.apple.Virtu").
     public static func find(_ stats: [ProcessStat], colimaInstalled: Bool) -> [VirtualMachineUsage] {
         let colima = colimaInstalled && stats.contains { $0.name == "limactl" }
-        return stats.filter { $0.name == "com.apple.Virtualization.VirtualMachine" }.sorted { $0.memory > $1.memory }.enumerated().map { index, vm in
+        return stats.filter { $0.path.hasSuffix("/com.apple.Virtualization.VirtualMachine") }.sorted { $0.memory > $1.memory }.enumerated().map { index, vm in
             // Colima's is the one limactl keeps running: with several machines, the biggest is taken as its.
             let isColima = colima && index == 0
             return VirtualMachineUsage(pid: vm.pid, name: isColima ? "Colima's Linux machine" : "A virtual machine", memory: vm.memory, isColima: isColima)

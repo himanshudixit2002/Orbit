@@ -171,6 +171,9 @@ struct LiveProbeCheck {
         for app in apps.prefix(8) { print("PROBE storage: app \(app.name) \(ByteCountFormatter.string(fromByteCount: app.size, countStyle: .file)) \(app.lastUsedText()) removable \(app.removable)") }
         for file in files.prefix(8) { print("PROBE storage: file \(file.path) \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))") }
         print("PROBE memory: \(StatsSampler.memoryBreakdown().summary)")
+        for vm in VirtualMachines.find(ctx.readings.processStats(), colimaInstalled: FileManager.default.isExecutableFile(atPath: Tool.colima)) {
+            print("PROBE memory: \(vm.name) \(ByteCountFormatter.string(fromByteCount: Int64(vm.memory), countStyle: .memory)) colima \(vm.isColima)")
+        }
     }
 
     /// When this Mac started, when you logged in, and what has used the processor most since (it only reads).
