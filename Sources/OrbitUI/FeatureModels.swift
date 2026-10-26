@@ -333,7 +333,7 @@ extension AppModel {
         cleanup.trashed.formUnion(clearable.map(\.id))
         cleanup.selected.subtract(clearable.map(\.id))
         let scanner = CleanupScanner(ctx)
-        let title = items.count == 1 ? "Moved \(items[0].title.lowercased()) to the Trash" : "Cleared \(items.count) things (\(bytes(cleanup.selectedSize + clearable.reduce(0) { $0 + $1.size })))"
+        let title = items.count == 1 ? "Moved \(items[0].title.lowercased()) to the Trash" : "Cleared \(items.count) things (\(diskBytes(cleanup.selectedSize + clearable.reduce(0) { $0 + $1.size })))"
         perform("cleanup-selected", title) { _ in scanner.trash(items) }
     }
 
@@ -343,7 +343,7 @@ extension AppModel {
         let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey])
         guard let free = values?.volumeAvailableCapacityForImportantUsage, let total = values?.volumeTotalCapacity, total > 0,
               free < 15_000_000_000 || Double(free) / Double(total) < 0.1 else { return }
-        notifier?.send(.lowDisk, key: "low disk", title: "Your Mac is low on space", body: "\(bytes(free)) free. Storage shows where it went and what can go.",
+        notifier?.send(.lowDisk, key: "low disk", title: "Your Mac is low on space", body: "\(diskBytes(free)) free. Storage shows where it went and what can go.",
                        page: .cleanup, every: 24 * 3600) { [weak self] in
             self?.openMainWindow()
             self?.page = .cleanup

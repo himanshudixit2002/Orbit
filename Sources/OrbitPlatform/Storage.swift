@@ -112,7 +112,8 @@ public struct StorageProbe: Sendable {
             ((try? FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false))) ?? [])
                 .filter { $0.hasSuffix(".app") }.map { folder.appending(path: $0) }
         }
-        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.standardizedFileURL.path(percentEncoded: false) })
+        // macOS gives running apps' folders with a slash at the end: compared without it.
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL.map { AppUsageTracker.trimmed($0.standardizedFileURL.path(percentEncoded: false)) } })
         let me = getuid()
         return await withTaskGroup(of: InstalledAppSize.self) { group in
             for bundle in bundles {
@@ -124,7 +125,7 @@ public struct StorageProbe: Sendable {
                     return InstalledAppSize(name: bundle.deletingPathExtension().lastPathComponent, path: path,
                                             bundleID: Bundle(url: bundle)?.bundleIdentifier, size: Self.walk(bundle, collectingFrom: nil).size,
                                             lastUsed: lastUsed, removable: owner?.uint32Value == me,
-                                            running: running.contains(bundle.standardizedFileURL.path(percentEncoded: false)))
+                                            running: running.contains(AppUsageTracker.trimmed(bundle.standardizedFileURL.path(percentEncoded: false))))
                 }
             }
             var apps: [InstalledAppSize] = []

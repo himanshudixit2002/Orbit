@@ -72,7 +72,7 @@ struct StorageOverview: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(storage.areas.isEmpty ? "Where your space goes" : "\(bytes(storage.free)) free of \(bytes(storage.used + storage.free))")
+                        Text(storage.areas.isEmpty ? "Where your space goes" : "\(diskBytes(storage.free)) free of \(diskBytes(storage.used + storage.free))")
                             .font(.title2.weight(.bold))
                         Text(storage.measuring ? "Measuring every folder Orbit can see…" : "Measured \(storage.measuredAt?.formatted(date: .omitted, time: .shortened) ?? "")")
                             .font(.callout).foregroundStyle(.secondary)
@@ -113,7 +113,7 @@ struct StorageOverview: View {
         }
         .frame(height: 14)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(bytes(storage.used)) used, \(bytes(storage.free)) free")
+        .accessibilityLabel("\(diskBytes(storage.used)) used, \(diskBytes(storage.free)) free")
     }
 
     func row(_ area: StorageArea, total: Int64) -> some View {
@@ -129,7 +129,7 @@ struct StorageOverview: View {
             if area.kind == .trash {
                 Button("Open Trash") { NSWorkspace.shared.open(model.ctx.paths.trash) }.buttonStyle(.glass).controlSize(.small)
             }
-            Text(area.hidden ? "–" : bytes(area.size)).font(.callout.monospacedDigit().weight(.semibold)).frame(width: 80, alignment: .trailing)
+            Text(area.hidden ? "–" : diskBytes(area.size)).font(.callout.monospacedDigit().weight(.semibold)).frame(width: 80, alignment: .trailing)
             Text(area.hidden || total == 0 ? "" : "\(Int((Double(area.size) / Double(total) * 100).rounded()))%")
                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 36, alignment: .trailing)
         }
@@ -173,7 +173,7 @@ struct AppsPanel: View {
             Button("Move to Trash") { model.trashApp(app) }
             Button("Cancel", role: .cancel) {}
         } message: { app in
-            Text("\(bytes(app.size)) back once you empty the Trash. Until then, Undo puts it back. Its settings stay, in case you install it again.")
+            Text("\(diskBytes(app.size)) back once you empty the Trash. Until then, Undo puts it back. Its settings stay, in case you install it again.")
         }
     }
 
@@ -185,7 +185,7 @@ struct AppsPanel: View {
                 Text(app.lastUsedText()).font(.caption).foregroundStyle(app.unused() ? Color.orange : Color.secondary)
             }
             Spacer()
-            Text(bytes(app.size)).font(.callout.monospacedDigit()).frame(width: 80, alignment: .trailing)
+            Text(diskBytes(app.size)).font(.callout.monospacedDigit()).frame(width: 80, alignment: .trailing)
             Group {
                 if app.running {
                     Text("Open now").font(.caption).foregroundStyle(.secondary)
@@ -212,7 +212,7 @@ struct LargeFilesPanel: View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 10) {
                 if files.isEmpty {
-                    Text(storage.measuring ? "Looking…" : "No file of yours is over \(bytes(LargeFiles.atLeast)).").foregroundStyle(.secondary)
+                    Text(storage.measuring ? "Looking…" : "No file of yours is over \(diskBytes(LargeFiles.atLeast)).").foregroundStyle(.secondary)
                 }
                 ForEach(files.prefix(15)) { file in row(file, home: home) }
                 if !storage.fullAccess, storage.measuredAt != nil {
@@ -226,7 +226,7 @@ struct LargeFilesPanel: View {
             Button("Move to Trash") { model.trashFile(file) }
             Button("Cancel", role: .cancel) {}
         } message: { file in
-            Text("\(bytes(file.size)) back once you empty the Trash. Until then, Undo puts it back.")
+            Text("\(diskBytes(file.size)) back once you empty the Trash. Until then, Undo puts it back.")
         }
     }
 
@@ -241,7 +241,7 @@ struct LargeFilesPanel: View {
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
-            Text(bytes(file.size)).font(.callout.monospacedDigit()).frame(width: 80, alignment: .trailing)
+            Text(diskBytes(file.size)).font(.callout.monospacedDigit()).frame(width: 80, alignment: .trailing)
             Button("Show") { model.showInFinder(file.path) }.buttonStyle(.glass)
             if file.movable(home: home) {
                 Button("Move to Trash") { removing = file }.buttonStyle(.glass).disabled(model.isBusy("trash-\(file.path)"))

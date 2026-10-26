@@ -79,7 +79,7 @@ public struct MenuBarPanel: View {
             HStack(spacing: 14) {
                 mini("cpu", percent(s.cpu))
                 mini("memorychip", percent(s.memoryFraction))
-                mini("internaldrive", bytes(s.diskFree))
+                mini("internaldrive", diskBytes(s.diskFree))
                 mini("arrow.down", speed(s.download))
             }
             .font(.caption.monospacedDigit())

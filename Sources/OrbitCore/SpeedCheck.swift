@@ -275,7 +275,7 @@ public enum SpeedCheck {
             found.append(DoctorFinding(
                 id: "speed-disk", severity: .problem, symbol: "internaldrive",
                 title: "The disk is nearly full",
-                detail: "\(bytes(facts.diskFree)) free of \(bytes(facts.diskTotal)). macOS slows down when it can't make room.",
+                detail: "\(diskBytes(facts.diskFree)) free of \(diskBytes(facts.diskTotal)). macOS slows down when it can't make room.",
                 fix: .open(.cleanup)))
         }
 
@@ -347,5 +347,7 @@ public enum SpeedCheck {
     }
 
     static func bytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .memory) }
+    /// Disk space as Finder counts it (a GB is a billion bytes).
+    static func diskBytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .file) }
     static func bytes(_ count: UInt64) -> String { bytes(Int64(count)) }
 }

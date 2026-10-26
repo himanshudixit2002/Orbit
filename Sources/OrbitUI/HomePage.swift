@@ -136,7 +136,7 @@ struct MiniStats: View {
                      series: history.map(\.cpu), fraction: s.cpu)
             StatTile(title: "Memory", value: bytes(Int64(s.memoryUsed)) + " used", symbol: "memorychip", hue: pressureHue(s.memoryPressure),
                      series: history.map(\.memoryFraction), fraction: s.memoryFraction)
-            StatTile(title: "Storage", value: bytes(s.diskFree) + " free", symbol: "internaldrive", hue: s.diskUsedFraction > 0.9 ? .red : .blue,
+            StatTile(title: "Storage", value: diskBytes(s.diskFree) + " free", symbol: "internaldrive", hue: s.diskUsedFraction > 0.9 ? .red : .blue,
                      series: [], fraction: s.diskUsedFraction)
             StatTile(title: "Network", value: "↓ " + speed(s.download) + "  ↑ " + speed(s.upload), symbol: "network", hue: .cyan,
                      series: normalized(history.map(\.download)), fraction: nil)
@@ -149,6 +149,8 @@ struct MiniStats: View {
 
 func percent(_ fraction: Double) -> String { "\(Int((fraction * 100).rounded()))%" }
 func bytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .memory) }
+/// Disk space as Finder and System Settings count it (a GB is a billion bytes; memory counts in 1024s).
+func diskBytes(_ count: Int64) -> String { ByteCountFormatter.string(fromByteCount: count, countStyle: .file) }
 func speed(_ perSecond: Double) -> String { ByteCountFormatter.string(fromByteCount: Int64(perSecond), countStyle: .file) + "/s" }
 func normalized(_ values: [Double]) -> [Double] {
     let top = max(values.max() ?? 1, 1)

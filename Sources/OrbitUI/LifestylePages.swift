@@ -452,15 +452,15 @@ struct CleanupPage: View {
                         .frame(width: 140, height: 140)
                         .overlay {
                             VStack(spacing: 0) {
-                                Text(bytes(cleanup.selectedSize)).font(.headline)
+                                Text(diskBytes(cleanup.selectedSize)).font(.headline)
                                 Text("ticked").font(.caption).foregroundStyle(.secondary)
                             }
                         }
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("\(bytes(cleanup.total)) found, \(bytes(cleanup.selectedSize)) ticked")
+                        .accessibilityLabel("\(diskBytes(cleanup.total)) found, \(diskBytes(cleanup.selectedSize)) ticked")
                     }
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(cleanup.scannedAt == nil ? "See what's taking up space" : "\(bytes(cleanup.total)) you could clear")
+                        Text(cleanup.scannedAt == nil ? "See what's taking up space" : "\(diskBytes(cleanup.total)) you could clear")
                             .font(.title2.weight(.bold))
                         Text("Things that come back by themselves are ticked. Everything goes to the Trash, and one Undo puts it all back.")
                             .foregroundStyle(.secondary)
@@ -475,7 +475,7 @@ struct CleanupPage: View {
                             .buttonStyle(.glass)
                             .disabled(cleanup.scanning)
                             if cleanup.scannedAt != nil {
-                                Button("Clear selected (\(bytes(cleanup.selectedSize)))") { model.clearSelected() }
+                                Button("Clear selected (\(diskBytes(cleanup.selectedSize)))") { model.clearSelected() }
                                     .buttonStyle(.glassProminent)
                                     .disabled(cleanup.selectedItems.isEmpty || model.isBusy("cleanup-selected"))
                             }
@@ -500,7 +500,7 @@ struct CleanupPage: View {
             LargeFilesPanel()
             HStack {
                 if cleanup.trashSize > 0 {
-                    Label("The Trash holds \(bytes(cleanup.trashSize)). Empty it in Finder when you're sure, to get the space back.",
+                    Label("The Trash holds \(diskBytes(cleanup.trashSize)). Empty it in Finder when you're sure, to get the space back.",
                           systemImage: "trash")
                         .font(.callout).foregroundStyle(.secondary)
                 }
@@ -535,7 +535,8 @@ struct CleanupPage: View {
                     Text(item.detail).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(bytes(item.size)).font(.system(.body, design: .rounded).weight(.semibold)).monospacedDigit()
+                // A size Orbit couldn't measure (it needs Full Disk Access) isn't zero.
+                Text(item.size == 0 && item.safety == .guideOnly ? "–" : diskBytes(item.size)).font(.system(.body, design: .rounded).weight(.semibold)).monospacedDigit()
                 Button { showing = item } label: { Image(systemName: "info.circle") }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("About \(item.title)")
@@ -575,7 +576,7 @@ struct CleanupDetail: View {
                 Image(systemName: item.symbol).font(.title).foregroundStyle(.tint)
                 VStack(alignment: .leading) {
                     Text(item.title).font(.title2.weight(.semibold))
-                    Text("\(bytes(item.size)) · \(item.safety.label)").foregroundStyle(.secondary)
+                    Text("\(diskBytes(item.size)) · \(item.safety.label)").foregroundStyle(.secondary)
                 }
             }
             Text(item.why.isEmpty ? item.detail : item.why).fixedSize(horizontal: false, vertical: true)

@@ -90,10 +90,10 @@ struct MonitorPage: View {
                         .frame(height: 110)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Storage")
-                        .accessibilityValue("\(bytes(s.diskFree)) free of \(bytes(s.diskTotal))")
+                        .accessibilityValue("\(diskBytes(s.diskFree)) free of \(diskBytes(s.diskTotal))")
                         .overlay {
                             VStack(spacing: 0) {
-                                Text(bytes(s.diskFree)).font(.headline)
+                                Text(diskBytes(s.diskFree)).font(.headline)
                                 Text("free").font(.caption).foregroundStyle(.secondary)
                             }
                         }
