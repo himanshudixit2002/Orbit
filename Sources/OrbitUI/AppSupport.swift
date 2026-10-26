@@ -50,6 +50,11 @@ extension AppModel {
         mainWindowShown = true
         openWindow(id: "main")
         NSApp.activate()
+        // Asked from the background (a Caps Lock shortcut runs links with `open -g`), macOS may not bring
+        // Orbit forward, and a closed window would stay closed behind a Dock icon: it comes forward anyway.
+        Task { @MainActor in
+            NSApp.windows.first { $0.title == "Orbit" && !($0 is NSPanel) && !$0.isVisible }?.orderFrontRegardless()
+        }
     }
 
     /// The main window came forward, however it was opened (the Dock, the Window menu, a link).
