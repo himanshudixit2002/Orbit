@@ -53,3 +53,41 @@ import Testing
         _ = StatsSampler.swapUsed()
     }
 }
+
+@Suite struct InstantMacTests {
+    let dock = WatchedPreferences.dockDomain
+
+    @Test func everythingInstantThenBackAsItWas() async throws {
+        let system = FakeSystem()
+        let prefs = FakePreferences([Baseline.key(dock, "autohide-time-modifier"): .double(0.35),
+                                     Baseline.key(dock, "expose-animation-duration"): .double(0.12)])
+        let ctx = try sandboxContext(system, prefs: prefs)
+        let actions = Actions(ctx)
+        let on = await actions.setInstant(Set(SpeedTweak.Group.allCases), on: true)
+        #expect(on.ok)
+        for tweak in SpeedTweak.all { #expect(tweak.isApplied(prefs.read(tweak.domain, tweak.key)), "\(tweak.key)") }
+        #expect(actions.instantGroupsOn() == Set(SpeedTweak.Group.allCases))
+        #expect(system.ran("killall", "Dock") && system.ran("killall", "Finder"))
+        #expect(ctx.store.settings.speed.before.value(Baseline.key(dock, "autohide-time-modifier")) == .double(0.35))
+
+        // Off: the Dock's own speeds come back, and what wasn't set is unset again.
+        #expect(await actions.setInstant([.dock, .finder], on: false).ok)
+        #expect(prefs.read(dock, "autohide-time-modifier") == .double(0.35))
+        #expect(prefs.read(dock, "expose-animation-duration") == .double(0.12))
+        #expect(prefs.read(dock, "launchanim") == nil)
+        #expect(prefs.read(WatchedPreferences.finderDomain, "DisableAllAnimations") == nil)
+        #expect(actions.instantGroupsOn() == [.windows, .sheets])
+    }
+
+    @Test func undoPutsEveryValueBack() async throws {
+        let prefs = FakePreferences([Baseline.key(dock, "autohide-time-modifier"): .double(0.35)])
+        let ctx = try sandboxContext(prefs: prefs)
+        let actions = Actions(ctx)
+        let on = await actions.setInstant(Set(SpeedTweak.Group.allCases), on: true)
+        _ = await actions.undo(on.undo)
+        #expect(prefs.read(dock, "autohide-time-modifier") == .double(0.35))
+        #expect(prefs.read(WatchedPreferences.globalDomain, "NSAutomaticWindowAnimationsEnabled") == nil)
+        #expect(actions.instantGroupsOn().isEmpty)
+        #expect(ctx.store.settings.speed.before == PreferenceSnapshot())
+    }
+}

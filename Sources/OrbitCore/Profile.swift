@@ -68,6 +68,7 @@ public struct OrbitProfile: Sendable, Equatable {
         next.setupCompleted = local.setupCompleted
         next.openAtLogin = local.openAtLogin
         next.themeSync = local.themeSync
+        next.speed = local.speed
         next.doctorIgnored = local.doctorIgnored
         return next
     }

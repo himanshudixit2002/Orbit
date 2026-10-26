@@ -26,6 +26,8 @@ public struct OrbitSettings: Codable, Sendable, Equatable {
     public var themeSync = ThemeSyncSettings()
     /// Window arrangements saved to put back later.
     public var windowLayouts: [WindowLayout] = []
+    /// The Speed page: what the instant tweaks replaced, and whether heavy apps get a notice.
+    public var speed = SpeedSettings()
 
     public init() {}
 

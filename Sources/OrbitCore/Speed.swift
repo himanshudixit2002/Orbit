@@ -83,3 +83,43 @@ public struct SpeedTweak: Sendable, Equatable {
         Set(Group.allCases.filter { group in tweaks(in: group).allSatisfy { $0.isApplied(read($0.domain, $0.key)) } })
     }
 }
+
+/// Preferences as they were at some moment: set ones by value, and which weren't set.
+public struct PreferenceSnapshot: Codable, Sendable, Equatable {
+    public var values: [String: PrefValue] = [:]
+    public var unset: [String] = []
+
+    public init() {}
+
+    public func knows(_ id: String) -> Bool { values[id] != nil || unset.contains(id) }
+
+    /// The value it had (nil: it wasn't set, or isn't known).
+    public func value(_ id: String) -> PrefValue? { values[id] }
+
+    public mutating func record(_ id: String, _ value: PrefValue?) {
+        forget(id)
+        if let value { values[id] = value } else { unset.append(id) }
+    }
+
+    public mutating func forget(_ id: String) {
+        values[id] = nil
+        unset.removeAll { $0 == id }
+    }
+}
+
+public struct SpeedSettings: Codable, Sendable, Equatable {
+    /// What each instant tweak replaced when it was switched on ("domain|key"), put back when it goes off.
+    public var before = PreferenceSnapshot()
+    /// A quiet notice with Quit when an app you aren't using takes a lot of memory or processor.
+    public var heavyAppNotices = true
+
+    public init() {}
+
+    private enum CodingKeys: String, CodingKey { case before, heavyAppNotices }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        before = c.value(.before, or: PreferenceSnapshot())
+        heavyAppNotices = c.value(.heavyAppNotices, or: true)
+    }
+}

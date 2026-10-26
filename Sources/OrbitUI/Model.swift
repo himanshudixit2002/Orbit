@@ -19,6 +19,7 @@ extension Page {
         case .shortcuts: .indigo
         case .developer: .orange
         case .monitor: .green
+        case .speed: .orange
         case .cleanup: .yellow
         case .dockFinder: .blue
         case .apps: .cyan
@@ -91,6 +92,8 @@ public final class AppModel {
     @ObservationIgnored public var modesEdited: (() -> Void)?
     /// The Dock and Finder as last read, so their page opens on real values straight away.
     var dockFinder: DockFinderReading?
+    /// Which instant groups are on (read off the main thread when the Speed page shows).
+    var instantOn: Set<SpeedTweak.Group> = []
     let appCatalog = AppCatalog()
     let monitor = MonitorModel()
     let modes: ModesModel
